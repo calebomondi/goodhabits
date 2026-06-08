@@ -4,12 +4,11 @@ databases:
     region: oregon
     plan: free
 
-  - name: gooddollar-redis
-    type: redis
+services:
+  - type: keyvalue
+    name: gooddollar-redis
     region: oregon
     plan: free
-
-services:
   - type: web
     name: gooddollar-backend
     runtime: node
@@ -28,7 +27,8 @@ services:
           name: gooddollar-db
           property: connectionString
       - key: REDIS_URL
-        fromDatabase:
+        fromService:
+          type: keyvalue
           name: gooddollar-redis
           property: connectionString
       - key: RPC_URL
