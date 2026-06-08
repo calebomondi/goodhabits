@@ -59,7 +59,11 @@ export class NonceManager {
       provide: WALLET_CLIENT,
       useFactory: (config: ConfigService) => {
         let pk = config.get<string>('BACKEND_PRIVATE_KEY')
-        if (pk && !pk.startsWith('0x')) pk = `0x${pk}`
+        if (!pk) {
+          throw new Error('BACKEND_PRIVATE_KEY is missing. '
+            + 'Set it in Render Dashboard → gooddollar-backend → Environment → Secret Files.')
+        }
+        if (!pk.startsWith('0x')) pk = `0x${pk}`
         const account = privateKeyToAccount(pk as `0x${string}`)
         return createWalletClient({
           account,
