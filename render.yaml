@@ -1,0 +1,63 @@
+databases:
+  - name: gooddollar-db
+    databaseName: goodhabits
+    region: oregon
+    plan: free
+
+  - name: gooddollar-redis
+    type: redis
+    region: oregon
+    plan: free
+
+services:
+  - type: web
+    name: gooddollar-backend
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gooddollar-db
+          property: connectionString
+      - key: REDIS_URL
+        fromDatabase:
+          name: gooddollar-redis
+          property: connectionString
+      - key: RPC_URL
+        value: https://forno.celo.org
+      - key: TREASURY_CONTRACT
+        value: 0x64E169FB7e544D10e3aF116AB25738A02C402903
+      - key: SNAPSHOT_CRON
+        value: 0 * * * *
+      # Set these in the Render dashboard (secrets, do not commit):
+      #   BACKEND_PRIVATE_KEY
+      #   GROQ_API_KEY
+
+  - type: web
+    name: gooddollar-frontend
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: gooddollar-backend
+          property: url
+      - key: NEXT_PUBLIC_TREASURY_CONTRACT
+        value: 0x64E169FB7e544D10e3aF116AB25738A02C402903
+      - key: NEXT_PUBLIC_CELO_MAINNET_RPC_URL
+        value: https://celo-mainnet.infura.io/v3/18f7267d6c1544ecad55744dd50b6185
