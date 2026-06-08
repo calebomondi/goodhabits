@@ -136,4 +136,11 @@ export class TreasuryController {
   feeBps() {
     return this.treasury.feeBps()
   }
+
+  @Get('users/:address/requests')
+  withdrawalRequests(@Param('address') address: string) {
+    return this.treasury.getWithdrawalRequestsForUser(
+      address as `0x${string}`,
+    )
+  }
 }
