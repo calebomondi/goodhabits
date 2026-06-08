@@ -306,3 +306,136 @@ export function useApprove(tokenAddress: `0x${string}`, spenderAddress: `0x${str
   }
   return { approve, hash, isWritePending, isWriteError, writeError: error, isConfirming, isConfirmed } as const
 }
+
+// ─── useGetUserPosition ──────────────────────────────────────────────
+export type UserPosition = {
+  unlockedShares: bigint
+  lockedShares: bigint
+  ownershipBps: bigint
+  unlockedValue: bigint
+  totalValue: bigint
+  deposited: bigint
+  withdrawn: bigint
+  pnl: bigint
+}
+
+export function useGetUserPosition(userAddress?: `0x${string}`, chainId?: number) {
+  const treasuryAddress = getTreasuryAddress(chainId)
+  const { data, isLoading, isError, refetch } = useReadContract({
+    address: treasuryAddress,
+    abi: TREASURY_ABI,
+    functionName: "getUserPosition",
+    args: userAddress ? [userAddress] : undefined,
+    query: { enabled: !!userAddress },
+  })
+  const position =
+    data && typeof data === "object"
+      ? {
+          unlockedShares: (data as any).unlockedShares as bigint,
+          lockedShares: (data as any).lockedShares as bigint,
+          ownershipBps: (data as any).ownershipBps as bigint,
+          unlockedValue: (data as any).unlockedValue as bigint,
+          totalValue: (data as any).totalValue as bigint,
+          deposited: (data as any).deposited as bigint,
+          withdrawn: (data as any).withdrawn as bigint,
+          pnl: (data as any).pnl as bigint,
+        }
+      : null
+  return { position, isLoading, isError, refetch } as const
+}
+
+// ─── useGetSummary ───────────────────────────────────────────────────
+export type Summary = {
+  totalAssets: string
+  idleAssets: string
+  deployedAssets: string
+  reservedAssets: string
+  pricePerShare: string
+  totalShares: string
+  accruedFees: string
+  activePositions: number
+  ppsChange24h: number
+  assetsChange24h: number
+  totalAssetsUsd: string | null
+  idleAssetsUsd: string | null
+  deployedAssetsUsd: string | null
+  reservedAssetsUsd: string | null
+  accruedFeesUsd: string | null
+}
+
+export function useGetSummary() {
+  return useQuery<Summary>({
+    queryKey: ["analytics", "summary"],
+    queryFn: () => fetch("/api/analytics/summary").then((r) => r.json()),
+    staleTime: 30_000,
+    retry: 2,
+  })
+}
+
+// ─── useGetWithdrawalRequests ────────────────────────────────────────
+export type WithdrawalRequest = {
+  id: string
+  sharesLocked: string
+  assetsQuoted: string
+  user: string
+  createdAt: number
+  status: number // 0=Pending, 1=Ready, 2=Processed, 3=Cancelled
+}
+
+export function useGetWithdrawalRequests(userAddress?: `0x${string}`, refetchInterval = 15_000) {
+  return useQuery<WithdrawalRequest[]>({
+    queryKey: ["treasury", "requests", userAddress],
+    queryFn: () =>
+      fetch(`/api/treasury/users/${userAddress}/requests`).then((r) => r.json()),
+    enabled: !!userAddress,
+    refetchInterval,
+  })
+}
+
+// ─── useRequestWithdrawal ────────────────────────────────────────────
+export function useRequestWithdrawal(chainId?: number) {
+  const treasuryAddress = getTreasuryAddress(chainId)
+  const { writeContract, data: hash, isPending, isError, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  const requestWithdrawal = (shares: bigint) => {
+    writeContract({
+      address: treasuryAddress,
+      abi: TREASURY_ABI,
+      functionName: "requestWithdrawal",
+      args: [shares],
+    })
+  }
+  return { requestWithdrawal, hash, isPending, isError, writeError: error, isConfirming, isConfirmed } as const
+}
+
+// ─── useFinalizeWithdrawal ───────────────────────────────────────────
+export function useFinalizeWithdrawal(chainId?: number) {
+  const treasuryAddress = getTreasuryAddress(chainId)
+  const { writeContract, data: hash, isPending, isError, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  const finalizeWithdrawal = (requestId: bigint) => {
+    writeContract({
+      address: treasuryAddress,
+      abi: TREASURY_ABI,
+      functionName: "finalizeWithdrawal",
+      args: [requestId],
+    })
+  }
+  return { finalizeWithdrawal, hash, isPending, isError, writeError: error, isConfirming, isConfirmed } as const
+}
+
+// ─── useCancelWithdrawal ─────────────────────────────────────────────
+export function useCancelWithdrawal(chainId?: number) {
+  const treasuryAddress = getTreasuryAddress(chainId)
+  const { writeContract, data: hash, isPending, isError, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  const cancelWithdrawal = (requestId: bigint) => {
+    writeContract({
+      address: treasuryAddress,
+      abi: TREASURY_ABI,
+      functionName: "cancelWithdrawalRequest",
+      args: [requestId],
+    })
+  }
+  return { cancelWithdrawal, hash, isPending, isError, writeError: error, isConfirming, isConfirmed } as const
+}
