@@ -9,6 +9,7 @@ services:
     name: gooddollar-redis
     region: oregon
     plan: free
+    ipAllowList: []
   - type: web
     name: gooddollar-backend
     runtime: node
@@ -53,10 +54,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: gooddollar-backend
-          property: url
+        value: https://gooddollar-backend.onrender.com
       - key: NEXT_PUBLIC_TREASURY_CONTRACT
         value: 0x64E169FB7e544D10e3aF116AB25738A02C402903
       - key: NEXT_PUBLIC_CELO_MAINNET_RPC_URL
