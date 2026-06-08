@@ -163,7 +163,7 @@ export function SectionCards() {
       </Card>
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Invest Yield</CardDescription>
+          <CardDescription>Investment</CardDescription>
           <CardTitle className="font-heading text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {investAmountUsd ?? `${formatG$(investAmount)} G$`}
           </CardTitle>
@@ -172,6 +172,9 @@ export function SectionCards() {
               {formatG$(investAmount)} G$
             </p>
           )}
+          <CardAction>
+            <span className="text-xs text-muted-foreground tabular-nums">0.00%</span>
+          </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="text-muted-foreground">
