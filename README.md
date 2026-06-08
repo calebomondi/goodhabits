@@ -177,6 +177,60 @@ Visit `http://localhost:3001` (or whichever port the frontend runs on).
 | `PRIVATE_KEY_DEPLOYER` | contracts | Contract deployment key |
 | `ETHERSCAN_API_KEY` | contracts | Contract verification |
 
+## Deploy to Render
+
+This repo includes a [`render.yaml`](./render.yaml) for one-click deployment via [Render Blueprint](https://render.com/docs/blueprint-spec).
+
+### One-click deploy
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/YOUR_USERNAME/gooddollar)
+
+Replace with your repo URL, or:
+
+### Manual CLI setup
+
+```bash
+# Install Render CLI
+npm install -g @render/cli
+
+# Login and deploy
+render blueprint apply --repo https://github.com/YOUR_USERNAME/gooddollar
+```
+
+### What gets created
+
+| Resource | Type | Plan |
+|---|---|---|
+| `gooddollar-db` | PostgreSQL | Free (256 MB) |
+| `gooddollar-redis` | Redis | Free (25 MB) |
+| `gooddollar-backend` | Web Service (Node) | Free |
+| `gooddollar-frontend` | Web Service (Node) | Free |
+
+### Post-deploy
+
+1. Go to **Dashboard → gooddollar-backend → Environment** and add secrets:
+   - `BACKEND_PRIVATE_KEY` — the backend hot wallet private key
+   - `GROQ_API_KEY` — your Groq API key
+2. Push the database schema:
+   ```bash
+   # In a local terminal with DATABASE_URL pointing to the Render Postgres:
+   cd backend && npx drizzle-kit push
+   ```
+3. Verify health: visit `https://gooddollar-backend.onrender.com/api/dashboard` (expects auth headers, but confirms the service is up).
+
+### Architecture on Render
+
+```mermaid
+flowchart LR
+    U[User Browser] --> F[Frontend<br/>gooddollar-frontend<br/>render.com]
+    F -->|/api/* proxy| B[Backend<br/>gooddollar-backend<br/>render.com]
+    B --> PG[(PostgreSQL<br/>gooddollar-db)]
+    B --> RD[(Redis<br/>gooddollar-redis)]
+    B -->|Viem| C[Celo Mainnet]
+```
+
+The frontend rewrites `/api/*` to the backend via `NEXT_PUBLIC_API_URL`. No separate reverse proxy needed.
+
 ## Detailed Documentation
 
 - [Backend README](./backend/README.md) — API endpoints, modules, database schema, worker flows
