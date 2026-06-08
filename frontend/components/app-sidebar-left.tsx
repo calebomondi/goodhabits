@@ -39,25 +39,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
 import { TREASURY_ABI, getTreasuryAddress } from "@/lib/contract"
-import { useHasUserSetStrategy, useGetUserHabit, useSetHabitStrategy, useTargetSavingsUnlock, useBrokeHabits, useSetTargetSavingsUnlock, useGetUserAllocation, useWithdraw, TOKENS, ERC20_ABI } from "@/lib/hooks"
+import { useHasUserSetStrategy, useGetUserHabit, useSetHabitStrategy, useTargetSavingsUnlock, useBrokeHabits, useSetTargetSavingsUnlock, useGetUserAllocation, useWithdraw, TOKENS, ERC20_ABI, useGetUserPosition, useGetSummary, useGetWithdrawalRequests, useRequestWithdrawal, useFinalizeWithdrawal, useCancelWithdrawal } from "@/lib/hooks"
 
-type UserPosition = {
-  shares: string
-  lockedShares: string
-  ownershipBps: string
-  currentValue: string
-  deposited: string
-  withdrawn: string
-  pnl: string
-}
-
-type Summary = {
-  pricePerShare: string
-  totalAssets: string
-  activePositions: number
-  accruedFees: string
-  feeBps: string
-}
+// Types moved to hooks.ts: UserPosition, Summary, WithdrawalRequest
 
 function formatG$(value: string | number) {
   const n = typeof value === "string" ? Number(value) : value
@@ -70,19 +54,9 @@ function formatG$(value: string | number) {
 export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { address, isConnected, chainId } = useAccount()
 
-  const { data: summary, isError: summaryError } = useQuery<Summary>({
-    queryKey: ["analytics", "summary"],
-    queryFn: () => fetch("/api/analytics/summary").then((r) => r.json()),
-    refetchInterval: 60_000,
-    enabled: isConnected,
-  })
-
-  const { data: userPosition, isError: positionError } = useQuery<UserPosition>({
-    queryKey: ["treasury", "users", address],
-    queryFn: () => fetch(`/api/treasury/users/${address}`).then((r) => r.json()),
-    enabled: !!address && isConnected,
-    refetchInterval: 30_000,
-  })
+  const { data: summary, isError: summaryError } = useGetSummary()
+  const { position: userPosition, isError: positionError, refetch: refetchPosition } = useGetUserPosition(address, chainId)
+  const { data: activeRequests, refetch: refetchRequests } = useGetWithdrawalRequests(address)
 
   useEffect(() => {
     if (summaryError) toast.error("Failed to load treasury summary")
@@ -94,13 +68,17 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
 
   const pricePerShare = summary?.pricePerShare ?? "0"
   const ppsNum = Number(pricePerShare) / 1e18
-  const unlockedShares = Number(userPosition?.shares ?? "0") / 1e18
-  const lockedSharesAmt = Number(userPosition?.lockedShares ?? "0") / 1e18
-  const currentValue = Number(userPosition?.currentValue ?? "0") / 1e18
-  const lifetimeDeposited = Number(userPosition?.deposited ?? "0") / 1e18
-  const lifetimeWithdrawn = Number(userPosition?.withdrawn ?? "0") / 1e18
-  const pnl = Number(userPosition?.pnl ?? "0") / 1e18
+  const unlockedShares = userPosition ? Number(userPosition.unlockedShares) / 1e18 : 0
+  const lockedSharesAmt = userPosition ? Number(userPosition.lockedShares) / 1e18 : 0
+  const totalValueG$ = userPosition ? Number(userPosition.totalValue) / 1e18 : 0
+  const unlockedValueG$ = userPosition ? Number(userPosition.unlockedValue) / 1e18 : 0
+  const lifetimeDeposited = userPosition ? Number(userPosition.deposited) / 1e18 : 0
+  const lifetimeWithdrawn = userPosition ? Number(userPosition.withdrawn) / 1e18 : 0
+  const pnl = userPosition ? Number(userPosition.pnl) / 1e18 : 0
+  const pnlPct = lifetimeDeposited > 0 ? (pnl / lifetimeDeposited) * 100 : 0
   const accruedFees = summary?.accruedFees ?? "0"
+  const userActiveRequestCount = activeRequests?.filter(r => r.status === 0 || r.status === 1).length ?? 0
+  const MAX_ACTIVE_REQUESTS = 10
 
   const [openSection, setOpenSection] = React.useState<string | null>("habit")
 
@@ -153,7 +131,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
     spendable: allocation ? Number(allocation.spendAmount) / 1e18 : 0,
     savings: allocation ? Number(allocation.saveAmount) / 1e18 : 0,
   }
-  const totalG$Balance = Number(userPosition?.shares ?? "0") / 1e18
+  const totalG$Balance = (withdrawableBalance.spendable + withdrawableBalance.savings + (userPosition ? Number(userPosition.unlockedValue) / 1e18 : 0))
   const { data: offrampRate } = useQuery({
     queryKey: ["offramp", "rate", offrampCurrency],
     queryFn: () => fetch(`/api/offramp/rate?currency=${offrampCurrency}`).then((r) => r.json()),
@@ -195,16 +173,31 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
 
   // ─── Investment ───
   const [requestAmount, setRequestAmount] = React.useState("")
-  const [isRequesting, setIsRequesting] = React.useState(false)
-  const userActiveRequestCount = 2
-  const MAX_ACTIVE_REQUESTS = 10
+  const [investOfframp, setInvestOfframp] = React.useState(false)
+  const [investOfframpCurrency, setInvestOfframpCurrency] = React.useState("USD")
+  const [investOfframpFiat, setInvestOfframpFiat] = React.useState("")
+  const [investOfframpRecipient, setInvestOfframpRecipient] = React.useState("")
+  const [investOfframpStep, setInvestOfframpStep] = React.useState<'idle' | 'withdraw' | 'approve' | 'done'>('idle')
+  const [investBackendAddress, setInvestBackendAddress] = React.useState<string | null>(null)
+  const [investOfframpRequestId, setInvestOfframpRequestId] = React.useState<number | null>(null)
+  const [investOfframpSubmitted, setInvestOfframpSubmitted] = React.useState<{ amountFiat: string; currency: string; recipient: string } | null>(null)
+  const [offrampTargetRequest, setOfframpTargetRequest] = React.useState<{ requestId: bigint; g$Wei: bigint } | null>(null)
+  const { data: investOfframpRate } = useQuery({
+    queryKey: ["offramp", "rate", investOfframpCurrency],
+    queryFn: () => fetch(`/api/offramp/rate?currency=${investOfframpCurrency}`).then((r) => r.json()),
+    enabled: investOfframp,
+    refetchInterval: 60_000,
+  })
+  const investDisplayRate = investOfframpRate?.displayRate ?? investOfframpRate?.rate ?? 0.72
+  const { data: investOfframpStatus } = useQuery({
+    queryKey: ["offramp", "status", investOfframpRequestId],
+    queryFn: () => fetch(`/api/offramp/requests/${investOfframpRequestId}`).then(r => r.json()),
+    enabled: investOfframpRequestId !== null,
+    refetchInterval: 5_000,
+  })
   const sharePrice = ppsNum
   const requestTimeout = 7 * 24 * 60 * 60
   const nowSec = Date.now() / 1000
-  const [activeRequests] = React.useState([
-    { id: 1, shares: 100, assets: 250, status: "Ready" as const, createdAt: nowSec - 10 * 24 * 60 * 60 },
-    { id: 2, shares: 50, assets: 120, status: "Pending" as const, createdAt: nowSec - 2 * 24 * 60 * 60 },
-  ])
 
   const queryClient = useQueryClient()
 
@@ -235,17 +228,16 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
 
   // ─── Wagmi contract hooks ───
   const { writeContract: writeDeposit, data: depositHash, isPending: depositPending } = useWriteContract()
-  const { writeContract: writeRequestWithdrawal, data: requestHash, isPending: requestPending } = useWriteContract()
-  const { writeContract: writeFinalize, data: finalizeHash, isPending: finalizePending } = useWriteContract()
-  const { writeContract: writeCancel, data: cancelHash, isPending: cancelPending } = useWriteContract()
+  const { requestWithdrawal, hash: requestHash, isPending: requestPending, isConfirming: requestConfirming, isConfirmed: requestConfirmed } = useRequestWithdrawal(chainId)
+  const { finalizeWithdrawal, hash: finalizeHash, isPending: finalizePending, isConfirming: finalizeConfirming, isConfirmed: finalizeConfirmed } = useFinalizeWithdrawal(chainId)
+  const { cancelWithdrawal, hash: cancelHash, isPending: cancelPending, isConfirming: cancelConfirming, isConfirmed: cancelConfirmed } = useCancelWithdrawal(chainId)
   const { withdraw: doWithdraw, hash: withdrawHash, isPending: withdrawPending, isConfirming: withdrawConfirming, isConfirmed } = useWithdraw(chainId)
   const { writeContract: writeApprove, data: approveHash, isPending: approvePending, isError: approveError, error: approveErrorObj } = useWriteContract()
   const { isLoading: approveConfirming, isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveHash })
+  const { writeContract: investWriteApprove, data: investApproveHash, isPending: investApprovePending, isError: investApproveError } = useWriteContract()
+  const { isLoading: investApproveConfirming, isSuccess: investApproveConfirmed } = useWaitForTransactionReceipt({ hash: investApproveHash })
 
   const { isLoading: depositConfirming } = useWaitForTransactionReceipt({ hash: depositHash })
-  const { isLoading: requestConfirming } = useWaitForTransactionReceipt({ hash: requestHash })
-  const { isLoading: finalizeConfirming } = useWaitForTransactionReceipt({ hash: finalizeHash })
-  const { isLoading: cancelConfirming } = useWaitForTransactionReceipt({ hash: cancelHash })
 
   React.useEffect(() => {
     if (setHabitConfirmed) toast.success("Habit strategy saved on-chain!")
@@ -264,42 +256,115 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
       setWithdrawAmount("")
       setOfframpFiatAmount("")
 
-      queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
-      queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-      queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
-      queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
-
-      fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
-        .finally(() => {
-          queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
-          queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
-          queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-          queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-          queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
-          queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
-          queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
-        })
+      invalidateAfterTx()
     }
   }, [isConfirmed, withdrawAction, address, queryClient])
 
-  React.useEffect(() => {
-    if (requestHash) toast.success("Withdrawal request submitted on-chain!")
-  }, [requestHash])
+  function invalidateAfterTx() {
+    queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
+    queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
+    queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
+    queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
+    queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
+    queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
+    queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
+    queryClient.invalidateQueries({ queryKey: ["treasury", "requests", address] })
+    refetchPosition()
+    refetchRequests()
+
+    fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
+  }
 
   React.useEffect(() => {
-    if (finalizeHash) toast.success("Withdrawal finalized on-chain!")
-  }, [finalizeHash])
+    if (requestConfirmed) {
+      toast.success("Withdrawal request submitted on-chain!")
+      invalidateAfterTx()
+    }
+  }, [requestConfirmed])
 
   React.useEffect(() => {
-    if (cancelHash) toast.success("Withdrawal request cancelled on-chain!")
-  }, [cancelHash])
+    if (finalizeConfirmed) {
+      toast.success("Withdrawal finalized on-chain!")
+      invalidateAfterTx()
+    }
+  }, [finalizeConfirmed])
+
+  React.useEffect(() => {
+    if (cancelConfirmed) {
+      toast.success("Withdrawal request cancelled on-chain!")
+      invalidateAfterTx()
+    }
+  }, [cancelConfirmed])
 
   React.useEffect(() => {
     if (lockConfirmed) toast.success("Savings lock set on-chain!")
   }, [lockConfirmed])
+
+  // ── Investment offramp: step 1 — finalize confirmed → fetch beneficiary ──
+  React.useEffect(() => {
+    if (finalizeConfirmed && investOfframpStep === 'withdraw' && offrampTargetRequest) {
+      fetch('/api/offramp/beneficiary')
+        .then(r => r.json())
+        .then(data => {
+          setInvestBackendAddress(data.address)
+          setInvestOfframpStep('approve')
+        })
+        .catch(() => {
+          toast.error("Failed to get offramp beneficiary")
+          setInvestOfframpStep('idle')
+        })
+    }
+  }, [finalizeConfirmed, investOfframpStep, offrampTargetRequest])
+
+  // ── Investment offramp: step 2 — beneficiary set → send approve tx ──
+  React.useEffect(() => {
+    if (investOfframpStep === 'approve' && investBackendAddress && offrampTargetRequest && !investApproveHash && !investApprovePending) {
+      investWriteApprove({
+        address: TOKENS.G$,
+        abi: ERC20_ABI,
+        functionName: 'approve',
+        args: [investBackendAddress as `0x${string}`, offrampTargetRequest.g$Wei],
+      })
+    }
+  }, [investOfframpStep, investBackendAddress, offrampTargetRequest, investApproveHash, investApprovePending, investWriteApprove])
+
+  // ── Investment offramp: step 3 — approve confirmed → POST request → done ──
+  React.useEffect(() => {
+    if (investApproveConfirmed && investOfframpStep === 'approve' && offrampTargetRequest) {
+      fetch("/api/offramp/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userAddress: address,
+          amountG: offrampTargetRequest.g$Wei.toString(),
+          amountFiat: investOfframpFiat,
+          rateUsed: investDisplayRate.toString(),
+          targetCurrency: investOfframpCurrency,
+          usdcRecipient: investOfframpRecipient,
+        }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          setInvestOfframpSubmitted({ amountFiat: investOfframpFiat, currency: investOfframpCurrency, recipient: investOfframpRecipient })
+          setInvestOfframpStep('done')
+          setInvestOfframpRequestId(data.id)
+          toast.success("Offramp request submitted!")
+        })
+        .catch(() => {
+          toast.error("Failed to log offramp request")
+          setInvestOfframpStep('idle')
+        })
+    }
+  }, [investApproveConfirmed, investOfframpStep, offrampTargetRequest, investOfframpFiat, investOfframpCurrency, investOfframpRecipient, address, investDisplayRate])
+
+  // ── Investment offramp: reset on approve error ──
+  React.useEffect(() => {
+    if (investApproveError && investOfframpStep === 'approve') {
+      toast.error("Approval cancelled. Please try again.")
+      setInvestOfframpStep('idle')
+      setInvestBackendAddress(null)
+    }
+  }, [investApproveError, investOfframpStep])
 
   // Offramp chain: step 2 — withdraw confirmed → fetch beneficiary → trigger approve
   React.useEffect(() => {
@@ -901,15 +966,20 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                     Redeem G$ from your invested shares. Requests enter a cooldown before finalization.
                   </p>
 
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                    <span className="text-muted-foreground">Unlocked shares</span>
-                    <span className="text-right font-medium tabular-nums">{unlockedShares.toLocaleString()}</span>
-                    <span className="text-muted-foreground">Locked shares</span>
-                    <span className="text-right font-medium tabular-nums">{lockedSharesAmt.toLocaleString()}</span>
-                    <span className="text-muted-foreground">Share Price</span>
-                    <span className="text-right font-medium tabular-nums">{sharePrice.toFixed(6)} G$</span>
-                    <span className="text-muted-foreground">Fees Accrued</span>
-                    <span className="text-right font-medium tabular-nums">{formatG$(accruedFees)} G$</span>
+                  {/* ── Investment Summary ── */}
+                  <div className="rounded-md bg-background/50 px-3 py-2 flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Your Investment</span>
+                      <span className="text-sm font-semibold tabular-nums">{totalValueG$.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Yield Earned</span>
+                      <span className="text-sm font-semibold tabular-nums text-muted-foreground">0.00 G$</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Growth</span>
+                      <span className="text-sm font-semibold tabular-nums text-muted-foreground">0.00%</span>
+                    </div>
                   </div>
 
                   <Separator className="my-0.5" />
@@ -918,24 +988,91 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                     <Input
                       value={requestAmount}
                       onChange={(e) => setRequestAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-                      placeholder="Share amount"
+                      placeholder="Amount in G$"
                       className="h-9 text-sm pr-12"
-                      disabled={isRequesting}
+                      disabled={investOfframp}
                     />
                   </div>
 
                   {requestAmount && Number.parseFloat(requestAmount) > 0 && (
                     <p className="text-sm text-muted-foreground text-right -mt-1">
                       ≈{" "}
-                      {(Number.parseFloat(requestAmount) * sharePrice).toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
+                      {(Number.parseFloat(requestAmount) / sharePrice).toLocaleString(undefined, {
+                        maximumFractionDigits: 6,
                       })}{" "}
-                      G$
+                      shares
                     </p>
                   )}
 
+                  {/* ── Offramp toggle ── */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={investOfframp}
+                      onChange={(e) => {
+                        setInvestOfframp(e.target.checked)
+                        if (!e.target.checked) {
+                          setInvestOfframpStep('idle')
+                          setInvestOfframpSubmitted(null)
+                          setOfframpTargetRequest(null)
+                          setInvestBackendAddress(null)
+                          setInvestOfframpRequestId(null)
+                        }
+                      }}
+                      className="size-3.5 accent-cyan-600"
+                    />
+                    <span className="text-xs text-muted-foreground">Withdraw &amp; Offramp to fiat</span>
+                  </label>
+
+                  {investOfframp && (
+                    <div className="flex flex-col gap-2 pl-4 border-l-2 border-cyan-200">
+                      <div className="rounded-md bg-background/50 px-2 py-1.5 text-[11px] space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Amount</span>
+                          <span className="tabular-nums font-medium">~{Number.parseFloat(requestAmount || '0').toFixed(2)} G$</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Live rate</span>
+                          <span className="tabular-nums font-medium">1 G$ = {(CURRENCIES.find(c => c.code === investOfframpCurrency) ?? CURRENCIES[0]).symbol}{investDisplayRate.toFixed(6)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-16">Currency</span>
+                        <select
+                          value={investOfframpCurrency}
+                          onChange={(e) => setInvestOfframpCurrency(e.target.value)}
+                          className="h-8 text-xs rounded-md border border-input bg-background px-2 flex-1"
+                        >
+                          {CURRENCIES.map(c => (
+                            <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                          {(CURRENCIES.find(c => c.code === investOfframpCurrency) ?? CURRENCIES[0]).symbol}
+                        </span>
+                        <Input
+                          value={investOfframpFiat}
+                          onChange={(e) => setInvestOfframpFiat(e.target.value.replace(/[^0-9.]/g, ""))}
+                          placeholder="Fiat amount"
+                          className="h-8 text-xs pl-6"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[11px] text-muted-foreground">USDC recipient</span>
+                        <Input
+                          value={investOfframpRecipient}
+                          onChange={(e) => setInvestOfframpRecipient(e.target.value)}
+                          placeholder="0x..."
+                          className="h-8 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Requests</span>
+                    <span className="text-sm text-muted-foreground">Active requests</span>
                     <span className="text-sm font-medium tabular-nums">
                       {userActiveRequestCount}/{MAX_ACTIVE_REQUESTS}
                     </span>
@@ -945,16 +1082,16 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                     size="xs"
                     className="bg-cyan-600 hover:bg-cyan-700 text-white h-8"
                     onClick={() => {
-                      const shares = BigInt(Math.round(Number.parseFloat(requestAmount) * 1e18))
-                      writeRequestWithdrawal({
-                        address: treasuryAddress,
-                        abi: TREASURY_ABI,
-                        functionName: "requestWithdrawal",
-                        args: [shares],
-                      })
-                      setIsRequesting(true)
+                      setInvestOfframpStep('idle')
+                      setInvestOfframpSubmitted(null)
+                      setOfframpTargetRequest(null)
+                      setInvestBackendAddress(null)
+                      setInvestOfframpRequestId(null)
+                      const g$Amount = Number.parseFloat(requestAmount)
+                      const shares = BigInt(Math.round((g$Amount / sharePrice) * 1e18))
+                      requestWithdrawal(shares)
                     }}
-                    disabled={requestPending || requestConfirming || !requestAmount || Number.parseFloat(requestAmount) <= 0}
+                    disabled={requestPending || requestConfirming || !requestAmount || Number.parseFloat(requestAmount) <= 0 || sharePrice <= 0}
                   >
                     {requestPending || requestConfirming ? (
                       <><LoaderCircle className="size-3.5 animate-spin mr-1" /> Confirming...</>
@@ -969,18 +1106,18 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                     Active Requests
                   </span>
 
-                  {activeRequests.length === 0 ? (
+                  {!activeRequests || activeRequests.filter(r => r.status === 0 || r.status === 1).length === 0 ? (
                     <p className="text-sm text-muted-foreground">No active requests</p>
                   ) : (
                     <div className="flex flex-col gap-1">
-                      {activeRequests.map((req) => {
-                        const canCancel =
-                          req.status === "Pending" ||
-                          (req.status === "Ready" && nowSec > req.createdAt + requestTimeout)
+                      {activeRequests.filter(r => r.status === 0 || r.status === 1).map((req) => {
+                        const assets = Number(req.assetsQuoted) / 1e18
+                        const isReady = req.status === 1
                         const cooldownEnd = req.createdAt + requestTimeout
                         const cooldownLeft = Math.max(0, cooldownEnd - nowSec)
                         const cooldownDays = Math.floor(cooldownLeft / 86400)
                         const cooldownHours = Math.floor((cooldownLeft % 86400) / 3600)
+                        const canCancel = !isReady || (isReady && nowSec > req.createdAt + requestTimeout)
 
                         return (
                           <div
@@ -989,22 +1126,22 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                           >
                             <div className="flex flex-col min-w-0 gap-0.5">
                               <div className="flex items-center gap-1.5">
-                                {req.status === "Ready" ? (
+                                {isReady ? (
                                   <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
                                 ) : (
                                   <Clock className="size-3.5 text-amber-500 shrink-0" />
                                 )}
                                 <span className="text-xs truncate">
-                                  #{req.id} {req.assets} G$
+                                  #{req.id} {assets.toFixed(2)} G$
                                 </span>
                                 <Badge
-                                  variant={req.status === "Ready" ? "default" : "secondary"}
+                                  variant={isReady ? "default" : "secondary"}
                                   className="h-5 text-xs px-1.5 leading-none"
                                 >
-                                  {req.status}
+                                  {isReady ? "Ready" : "Pending"}
                                 </Badge>
                               </div>
-                              {req.status === "Pending" ? (
+                              {!isReady ? (
                                 <span className="text-[11px] text-muted-foreground ml-1">
                                   Awaiting liquidity
                                 </span>
@@ -1019,22 +1156,27 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                               )}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {req.status === "Ready" && (
+                              {isReady && (
                                 <Button
                                   size="xs"
-                                  className="h-7 text-xs px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  className={`h-7 text-xs px-2 ${investOfframp ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}
                                   onClick={() => {
-                                    writeFinalize({
-                                      address: treasuryAddress,
-                                      abi: TREASURY_ABI,
-                                      functionName: "finalizeWithdrawal",
-                                      args: [BigInt(req.id)],
-                                    })
+                                    if (investOfframp) {
+                                      const g$Wei = BigInt(req.assetsQuoted)
+                                      setOfframpTargetRequest({ requestId: BigInt(req.id), g$Wei })
+                                      setInvestOfframpStep('withdraw')
+                                    }
+                                    finalizeWithdrawal(BigInt(req.id))
                                   }}
-                                  disabled={finalizePending || finalizeConfirming}
+                                  disabled={
+                                    finalizePending || finalizeConfirming ||
+                                    (investOfframp && investOfframpStep !== 'idle')
+                                  }
                                 >
                                   {finalizePending || finalizeConfirming ? (
                                     <LoaderCircle className="size-3 animate-spin" />
+                                  ) : investOfframp ? (
+                                    "Finalize & Offramp"
                                   ) : (
                                     "Finalize"
                                   )}
@@ -1044,14 +1186,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                                 <Button
                                   size="xs"
                                   className="h-7 text-xs px-2 bg-rose-600 hover:bg-rose-700 text-white"
-                                  onClick={() => {
-                                    writeCancel({
-                                      address: treasuryAddress,
-                                      abi: TREASURY_ABI,
-                                      functionName: "cancelWithdrawalRequest",
-                                      args: [BigInt(req.id)],
-                                    })
-                                  }}
+                                  onClick={() => cancelWithdrawal(BigInt(req.id))}
                                   disabled={cancelPending || cancelConfirming}
                                 >
                                   {cancelPending || cancelConfirming ? (
@@ -1067,6 +1202,62 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                       })}
                     </div>
                   )}
+
+                  {investOfframpStep === 'done' && investOfframpSubmitted ? (
+                    <div className="w-full rounded-lg border border-border bg-white dark:bg-gray-950 p-3 flex flex-col gap-2 shadow-sm">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                        <CheckCircle2 className="size-4 text-emerald-500" />
+                        Offramp submitted
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Amount</span>
+                        <span className="font-semibold tabular-nums text-foreground">{investOfframpSubmitted.amountFiat} {investOfframpSubmitted.currency}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Recipient</span>
+                        <span className="font-mono font-semibold text-foreground">{investOfframpSubmitted.recipient.slice(0, 6)}...{investOfframpSubmitted.recipient.slice(-4)}</span>
+                      </div>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        className="h-6 text-xs"
+                        onClick={() => {
+                          setInvestOfframpStep('idle')
+                          setInvestOfframpSubmitted(null)
+                          setOfframpTargetRequest(null)
+                          setInvestBackendAddress(null)
+                          setInvestOfframpRequestId(null)
+                        }}
+                      >
+                        New offramp
+                      </Button>
+                      <div className="h-px bg-border my-0.5" />
+                      <div className="flex items-center gap-1.5 text-xs">
+                        {!investOfframpStatus ? (
+                          <span className="flex items-center gap-1 text-muted-foreground"><LoaderCircle className="size-3 animate-spin" /> Checking status...</span>
+                        ) : investOfframpStatus.status === 'completed' ? (
+                          <div className="flex flex-col gap-1 w-full">
+                            <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                              <CheckCircle2 className="size-3.5" /> Swapped & sent
+                            </span>
+                            {investOfframpStatus.explorerLink && (
+                              <a href={investOfframpStatus.explorerLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                                View on CeloScan →
+                              </a>
+                            )}
+                          </div>
+                        ) : investOfframpStatus.status === 'failed' ? (
+                          <span className="flex items-center gap-1 text-rose-600 font-semibold">
+                            Failed — contact support
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-amber-600 font-semibold">
+                            <LoaderCircle className="size-3 animate-spin" /> Processing swap...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </CollapsibleContent>
               </Collapsible>
             </div>
