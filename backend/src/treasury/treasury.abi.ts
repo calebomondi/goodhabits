@@ -168,6 +168,20 @@ export const TREASURY_ABI = [
   },
   {
     type: 'function' as const,
+    name: 'nextWithdrawalId',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view' as const,
+  },
+  {
+    type: 'function' as const,
+    name: 'activeRequestCount',
+    inputs: [{ type: 'address' }],
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view' as const,
+  },
+  {
+    type: 'function' as const,
     name: 'getWithdrawalRequest',
     inputs: [{ type: 'uint256', name: 'requestId' }],
     outputs: [
