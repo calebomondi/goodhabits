@@ -14,6 +14,8 @@ import { ProducerService } from './producer.service'
     BullModule.forRoot({
       connection: {
         url: process.env.REDIS_URL ?? 'redis://localhost:6379',
+        retryStrategy: (times: number) => Math.min(times * 200, 5000),
+        maxRetriesPerRequest: null,
       },
     }),
     BullModule.registerQueue(
