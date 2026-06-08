@@ -1,14 +1,35 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
-import { Token } from '@uniswap/sdk-core'
-import { type Address, type PublicClient, type WalletClient, parseUnits, encodePacked, encodeFunctionData } from 'viem'
-import { celo } from 'viem/chains'
-import QuoterV2ABI from '@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json'
-import { G_DOLLAR, CUSD, USDC, POOL_FEE, SWAP_ROUTER_ADDRESS } from './config'
-import { PUBLIC_CLIENT, WALLET_CLIENT, NonceManager } from './viem.provider'
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Token, CurrencyAmount, Percent, TradeType } from '@uniswap/sdk-core';
+import {
+  Route,
+  SwapQuoter,
+  SwapRouter,
+  Trade,
+  type SwapOptions,
+} from '@uniswap/v3-sdk';
+import {
+  type Address,
+  type PublicClient,
+  type WalletClient,
+  parseUnits,
+  decodeAbiParameters,
+  encodeFunctionData,
+} from 'viem';
+import { celo } from 'viem/chains';
+import {
+  G_DOLLAR,
+  CUSD,
+  USDC,
+  SWAP_ROUTER_ADDRESS,
+  QUOTER_ADDRESS,
+  G_CUSD_FEE,
+  CUSD_USDC_FEE,
+  MAX_FEE_PER_GAS,
+  MAX_PRIORITY_FEE_PER_GAS,
+} from './config';
+import { PUBLIC_CLIENT, WALLET_CLIENT, NonceManager } from './viem.provider';
+import { PoolStateService } from './pool-state.service';
 
-const QUOTER_ADDRESS = '0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8' as Address
-const G_CUSD_FEE = 10000  // 1%
-const CUSD_USDC_FEE = 100 // 0.01%
 const erc20ApproveAbi = [
   {
     type: 'function' as const,
@@ -20,106 +41,39 @@ const erc20ApproveAbi = [
     outputs: [{ type: 'bool' as const }],
     stateMutability: 'nonpayable' as const,
   },
-]
-
-const swapRouterAbi = [
-  {
-    type: 'function' as const,
-    name: 'exactInputSingle',
-    inputs: [
-      {
-        type: 'tuple' as const,
-        components: [
-          { type: 'address' as const, name: 'tokenIn' },
-          { type: 'address' as const, name: 'tokenOut' },
-          { type: 'uint24' as const, name: 'fee' },
-          { type: 'address' as const, name: 'recipient' },
-          { type: 'uint256' as const, name: 'amountIn' },
-          { type: 'uint256' as const, name: 'amountOutMinimum' },
-          { type: 'uint160' as const, name: 'sqrtPriceLimitX96' },
-        ],
-        name: 'params',
-      },
-    ],
-    outputs: [{ type: 'uint256' as const, name: 'amountOut' }],
-    stateMutability: 'nonpayable' as const,
-  },
-]
-
-const exactInputAbi = [
-  {
-    type: 'function' as const,
-    name: 'exactInput',
-    inputs: [
-      {
-        type: 'tuple' as const,
-        components: [
-          { type: 'bytes' as const, name: 'path' },
-          { type: 'address' as const, name: 'recipient' },
-          { type: 'uint256' as const, name: 'deadline' },
-          { type: 'uint256' as const, name: 'amountIn' },
-          { type: 'uint256' as const, name: 'amountOutMinimum' },
-        ],
-        name: 'params',
-      },
-    ],
-    outputs: [{ type: 'uint256' as const, name: 'amountOut' }],
-    stateMutability: 'nonpayable' as const,
-  },
-]
-
-const quoterExactInputAbi = [
-  {
-    type: 'function' as const,
-    name: 'quoteExactInput',
-    inputs: [
-      { type: 'bytes' as const, name: 'path' },
-      { type: 'uint256' as const, name: 'amountIn' },
-    ],
-    outputs: [
-      { type: 'uint256' as const, name: 'amountOut' },
-      { type: 'uint160' as const, name: 'sqrtPriceX96After' },
-      { type: 'uint32' as const, name: 'initializedTicksCrossed' },
-      { type: 'uint256' as const, name: 'gasEstimate' },
-    ],
-    stateMutability: 'view' as const,
-  },
-]
-
-function encodeMultiHopPath(tokenIn: Address, fee1: number, tokenMid: Address, fee2: number, tokenOut: Address): `0x${string}` {
-  return encodePacked(
-    ['address', 'uint24', 'address', 'uint24', 'address'],
-    [tokenIn, fee1, tokenMid, fee2, tokenOut],
-  )
-}
+];
 
 @Injectable()
 export class SwapService {
-  private readonly logger = new Logger(SwapService.name)
+  private readonly logger = new Logger(SwapService.name);
 
   constructor(
     @Inject(PUBLIC_CLIENT) private readonly client: PublicClient,
     @Inject(WALLET_CLIENT) private readonly walletClient: WalletClient,
     private readonly nonceManager: NonceManager,
+    private readonly poolState: PoolStateService,
   ) {}
 
   async quoteSwap(tokenIn: Token, amountIn: string): Promise<bigint> {
-    const amountInWei = parseUnits(amountIn, tokenIn.decimals)
+    const tokenOut = tokenIn.equals(G_DOLLAR) ? CUSD : G_DOLLAR;
+    const amountInWei = parseUnits(amountIn, tokenIn.decimals);
+    const pool = await this.poolState.fetchPoolState();
+    const route = new Route([pool], tokenIn, tokenOut);
 
-    const result = await this.client.readContract({
-      address: QUOTER_ADDRESS,
-      abi: QuoterV2ABI.abi,
-      functionName: 'quoteExactInputSingle',
-      args: [{
-        tokenIn: tokenIn.address,
-        tokenOut: tokenIn.equals(G_DOLLAR) ? CUSD.address : G_DOLLAR.address,
-        amountIn: amountInWei,
-        fee: POOL_FEE,
-        sqrtPriceLimitX96: 0n,
-      }],
-    }) as readonly [bigint, bigint, number, bigint]
+    const { calldata } = SwapQuoter.quoteCallParameters(
+      route,
+      CurrencyAmount.fromRawAmount(tokenIn, amountInWei.toString()),
+      TradeType.EXACT_INPUT,
+      { useQuoterV2: true },
+    );
 
-    return result[0]
+    const { data } = await this.client.call({
+      to: QUOTER_ADDRESS,
+      data: calldata as `0x${string}`,
+    });
+
+    const [amountOut] = decodeAbiParameters([{ type: 'uint256' }], data!);
+    return amountOut;
   }
 
   async executeSwap(
@@ -128,56 +82,108 @@ export class SwapService {
     amountOut: bigint,
     slippageBps = 50,
   ): Promise<`0x${string}`> {
-    const tokenOut = tokenIn.equals(G_DOLLAR) ? CUSD : G_DOLLAR
-    const myAddress = this.walletClient.account!.address as Address
-    const amountInWei = parseUnits(amountIn, tokenIn.decimals)
-    const minAmountOut = amountOut * BigInt(10000 - slippageBps) / 10000n
+    const tokenOut = tokenIn.equals(G_DOLLAR) ? CUSD : G_DOLLAR;
+    const myAddress = this.walletClient.account!.address;
+    const amountInWei = parseUnits(amountIn, tokenIn.decimals);
 
-    const [approveNonce, swapNonce] = await this.nonceManager.allocate(2)
+    const pool = await this.poolState.fetchPoolState();
+    const route = new Route([pool], tokenIn, tokenOut);
+
+    const trade = Trade.createUncheckedTrade({
+      route,
+      inputAmount: CurrencyAmount.fromRawAmount(
+        tokenIn,
+        amountInWei.toString(),
+      ),
+      outputAmount: CurrencyAmount.fromRawAmount(
+        tokenOut,
+        amountOut.toString(),
+      ),
+      tradeType: TradeType.EXACT_INPUT,
+    });
+
+    const options: SwapOptions = {
+      slippageTolerance: new Percent(slippageBps, 10_000),
+      deadline: Math.floor(Date.now() / 1000) + 60 * 20,
+      recipient: myAddress,
+    };
+
+    const { calldata, value } = SwapRouter.swapCallParameters([trade], options);
+
+    const [approveNonce, swapNonce] = await this.nonceManager.allocate(2);
 
     const approveHash = await this.walletClient.sendTransaction({
       to: tokenIn.address as Address,
-      data: encodeFunctionData({ abi: erc20ApproveAbi, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS as Address, amountInWei] }),
-      value: 0n, gas: 100_000n,
-      maxFeePerGas: 250_000_000_000n, maxPriorityFeePerGas: 5_000_000_000n,
-      nonce: approveNonce, chain: celo, account: this.walletClient.account!,
-    })
-    await this.client.waitForTransactionReceipt({ hash: approveHash, timeout: 180_000 })
-    this.logger.debug(`Approve confirmed: ${approveHash}`)
-
-    return this.walletClient.sendTransaction({
-      to: SWAP_ROUTER_ADDRESS as Address,
       data: encodeFunctionData({
-        abi: swapRouterAbi, functionName: 'exactInputSingle',
-        args: [{
-          tokenIn: tokenIn.address as Address,
-          tokenOut: tokenOut.address as Address,
-          fee: POOL_FEE,
-          recipient: myAddress,
-          amountIn: amountInWei,
-          amountOutMinimum: minAmountOut,
-          sqrtPriceLimitX96: 0n,
-        }],
+        abi: erc20ApproveAbi,
+        functionName: 'approve',
+        args: [SWAP_ROUTER_ADDRESS as Address, amountInWei],
       }),
-      value: 0n, gas: 300_000n,
-      maxFeePerGas: 250_000_000_000n, maxPriorityFeePerGas: 5_000_000_000n,
-      nonce: swapNonce, chain: celo, account: this.walletClient.account!,
-    })
+      value: 0n,
+      gas: 100_000n,
+      maxFeePerGas: MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+      nonce: approveNonce,
+      chain: celo,
+      account: this.walletClient.account!,
+    });
+    await this.client.waitForTransactionReceipt({
+      hash: approveHash,
+      timeout: 180_000,
+    });
+    this.logger.debug(`Approve confirmed: ${approveHash}`);
+
+    const swapHash = await this.walletClient.sendTransaction({
+      data: calldata as `0x${string}`,
+      to: SWAP_ROUTER_ADDRESS,
+      value: BigInt(value),
+      gas: 300_000n,
+      maxFeePerGas: MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+      nonce: swapNonce,
+      chain: celo,
+      account: this.walletClient.account!,
+    });
+    this.logger.debug(`Swap submitted: ${swapHash}`);
+
+    try {
+      const receipt = await this.client.waitForTransactionReceipt({
+        hash: swapHash,
+        timeout: 180_000,
+      });
+      if (receipt.status !== 'success') {
+        throw new Error(`Swap reverted: ${swapHash}`);
+      }
+      this.logger.debug(`Swap confirmed: ${swapHash}`);
+    } catch (err) {
+      await this.nonceManager.resync();
+      throw err;
+    }
+
+    return swapHash;
   }
 
   async quoteMultiHop(amountInWei: bigint): Promise<bigint> {
-    const path = encodeMultiHopPath(
-      G_DOLLAR.address as Address, G_CUSD_FEE,
-      CUSD.address as Address, CUSD_USDC_FEE,
-      USDC.address as Address,
-    )
-    const result = await this.client.readContract({
-      address: QUOTER_ADDRESS,
-      abi: quoterExactInputAbi,
-      functionName: 'quoteExactInput',
-      args: [path, amountInWei],
-    }) as [bigint, bigint, number, bigint]
-    return result[0]
+    const [pool1, pool2] = await Promise.all([
+      this.poolState.fetchPoolForTokens(G_DOLLAR, CUSD, G_CUSD_FEE),
+      this.poolState.fetchPoolForTokens(CUSD, USDC, CUSD_USDC_FEE),
+    ]);
+    const route = new Route([pool1, pool2], G_DOLLAR, USDC);
+
+    const { calldata } = SwapQuoter.quoteCallParameters(
+      route,
+      CurrencyAmount.fromRawAmount(G_DOLLAR, amountInWei.toString()),
+      TradeType.EXACT_INPUT,
+      { useQuoterV2: true },
+    );
+
+    const { data } = await this.client.call({
+      to: QUOTER_ADDRESS,
+      data: calldata as `0x${string}`,
+    });
+
+    const [amountOut] = decodeAbiParameters([{ type: 'uint256' }], data!);
+    return amountOut;
   }
 
   async executeMultiHopSwap(
@@ -186,41 +192,83 @@ export class SwapService {
     recipient?: Address,
     slippageBps = 100,
   ): Promise<`0x${string}`> {
-    const myAddress = this.walletClient.account!.address as Address
-    const finalRecipient = recipient ?? myAddress
-    const minAmountOut = amountOut * BigInt(10000 - slippageBps) / 10000n
-    const path = encodeMultiHopPath(
-      G_DOLLAR.address as Address, G_CUSD_FEE,
-      CUSD.address as Address, CUSD_USDC_FEE,
-      USDC.address as Address,
-    )
+    const myAddress = this.walletClient.account!.address;
+    const finalRecipient = recipient ?? myAddress;
 
-    const [approveNonce, swapNonce] = await this.nonceManager.allocate(2)
+    const [pool1, pool2] = await Promise.all([
+      this.poolState.fetchPoolForTokens(G_DOLLAR, CUSD, G_CUSD_FEE),
+      this.poolState.fetchPoolForTokens(CUSD, USDC, CUSD_USDC_FEE),
+    ]);
+    const route = new Route([pool1, pool2], G_DOLLAR, USDC);
+
+    const trade = Trade.createUncheckedTrade({
+      route,
+      inputAmount: CurrencyAmount.fromRawAmount(
+        G_DOLLAR,
+        amountInWei.toString(),
+      ),
+      outputAmount: CurrencyAmount.fromRawAmount(USDC, amountOut.toString()),
+      tradeType: TradeType.EXACT_INPUT,
+    });
+
+    const options: SwapOptions = {
+      slippageTolerance: new Percent(slippageBps, 10_000),
+      deadline: Math.floor(Date.now() / 1000) + 60 * 20,
+      recipient: finalRecipient,
+    };
+
+    const { calldata, value } = SwapRouter.swapCallParameters([trade], options);
+
+    const [approveNonce, swapNonce] = await this.nonceManager.allocate(2);
 
     const approveHash = await this.walletClient.sendTransaction({
       to: G_DOLLAR.address as Address,
-      data: encodeFunctionData({ abi: erc20ApproveAbi, functionName: 'approve', args: [SWAP_ROUTER_ADDRESS as Address, amountInWei] }),
-      value: 0n, gas: 100_000n,
-      maxFeePerGas: 250_000_000_000n, maxPriorityFeePerGas: 5_000_000_000n,
-      nonce: approveNonce, chain: celo, account: this.walletClient.account!,
-    })
-    await this.client.waitForTransactionReceipt({ hash: approveHash, timeout: 180_000 })
-    this.logger.debug(`MultiHop approve confirmed: ${approveHash}`)
-
-    return this.walletClient.sendTransaction({
-      to: SWAP_ROUTER_ADDRESS as Address,
       data: encodeFunctionData({
-        abi: exactInputAbi, functionName: 'exactInput',
-        args: [{
-          path, recipient: finalRecipient,
-          deadline: BigInt(Math.floor(Date.now() / 1000) + 1800),
-          amountIn: amountInWei,
-          amountOutMinimum: minAmountOut,
-        }],
+        abi: erc20ApproveAbi,
+        functionName: 'approve',
+        args: [SWAP_ROUTER_ADDRESS as Address, amountInWei],
       }),
-      value: 0n, gas: 300_000n,
-      maxFeePerGas: 250_000_000_000n, maxPriorityFeePerGas: 5_000_000_000n,
-      nonce: swapNonce, chain: celo, account: this.walletClient.account!,
-    })
+      value: 0n,
+      gas: 100_000n,
+      maxFeePerGas: MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+      nonce: approveNonce,
+      chain: celo,
+      account: this.walletClient.account!,
+    });
+    await this.client.waitForTransactionReceipt({
+      hash: approveHash,
+      timeout: 180_000,
+    });
+    this.logger.debug(`MultiHop approve confirmed: ${approveHash}`);
+
+    const swapHash = await this.walletClient.sendTransaction({
+      data: calldata as `0x${string}`,
+      to: SWAP_ROUTER_ADDRESS,
+      value: BigInt(value),
+      gas: 300_000n,
+      maxFeePerGas: MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+      nonce: swapNonce,
+      chain: celo,
+      account: this.walletClient.account!,
+    });
+    this.logger.debug(`MultiHop swap submitted: ${swapHash}`);
+
+    try {
+      const receipt = await this.client.waitForTransactionReceipt({
+        hash: swapHash,
+        timeout: 180_000,
+      });
+      if (receipt.status !== 'success') {
+        throw new Error(`MultiHop swap reverted: ${swapHash}`);
+      }
+      this.logger.debug(`MultiHop swap confirmed: ${swapHash}`);
+    } catch (err) {
+      await this.nonceManager.resync();
+      throw err;
+    }
+
+    return swapHash;
   }
 }
