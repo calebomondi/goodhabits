@@ -82,6 +82,118 @@ export const TREASURY_ABI = [
     stateMutability: "view" as const,
   },
 
+  // ── Investment positions ──
+  {
+    type: "function" as const,
+    name: "getUserPosition",
+    inputs: [{ type: "address", name: "user" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { type: "uint256", name: "unlockedShares" },
+          { type: "uint256", name: "lockedShares" },
+          { type: "uint256", name: "ownershipBps" },
+          { type: "uint256", name: "unlockedValue" },
+          { type: "uint256", name: "totalValue" },
+          { type: "uint256", name: "deposited" },
+          { type: "uint256", name: "withdrawn" },
+          { type: "int256", name: "pnl" },
+        ],
+      },
+    ],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "getWithdrawalRequest",
+    inputs: [{ type: "uint256", name: "requestId" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { type: "uint256", name: "id" },
+          { type: "uint256", name: "sharesLocked" },
+          { type: "uint256", name: "assetsQuoted" },
+          { type: "address", name: "user" },
+          { type: "uint40", name: "createdAt" },
+          { type: "uint8", name: "status" },
+        ],
+      },
+    ],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "activeRequestCount",
+    inputs: [{ type: "address", name: "user" }],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "nextWithdrawalId",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "pricePerShare",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "previewWithdraw",
+    inputs: [{ type: "uint256", name: "shareAmount" }],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "calculateTotalAssets",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "accruedFees",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "feeBps",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "deployedAssets",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "reservedAssets",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+  {
+    type: "function" as const,
+    name: "availableLiquidity",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view" as const,
+  },
+
   // ── Savings / lockup ──
   {
     type: "function" as const,
