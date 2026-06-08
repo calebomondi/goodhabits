@@ -17,6 +17,38 @@ CREATE TABLE "daily_volume" (
 	CONSTRAINT "daily_volume_date_unique" UNIQUE("date")
 );
 --> statement-breakpoint
+CREATE TABLE "indexer_state" (
+	"id" text PRIMARY KEY DEFAULT 'default' NOT NULL,
+	"last_indexed_block" numeric DEFAULT '0' NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "offramp_requests" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_address" text NOT NULL,
+	"amount_g" numeric NOT NULL,
+	"amount_fiat" numeric NOT NULL,
+	"rate_used" numeric NOT NULL,
+	"target_currency" text DEFAULT 'USD' NOT NULL,
+	"usdc_recipient" text,
+	"beneficiary" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"tx_hash" text,
+	"swap_tx_hash" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "position_registry" (
+	"id" bigserial PRIMARY KEY NOT NULL,
+	"token_id" bigint NOT NULL,
+	"tick_lower" integer NOT NULL,
+	"tick_upper" integer NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "position_registry_token_id_unique" UNIQUE("token_id")
+);
+--> statement-breakpoint
 CREATE TABLE "position_snapshots" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"token_id" bigint NOT NULL,
@@ -50,6 +82,25 @@ CREATE TABLE "treasury_snapshots" (
 	"tx_hash" text
 );
 --> statement-breakpoint
+CREATE TABLE "user_habits" (
+	"address" text PRIMARY KEY NOT NULL,
+	"total_saved" numeric DEFAULT '0' NOT NULL,
+	"current_streak" integer DEFAULT 0 NOT NULL,
+	"longest_streak" integer DEFAULT 0 NOT NULL,
+	"streak_start" timestamp with time zone,
+	"last_save_date" date,
+	"streak_broken_count" integer DEFAULT 0 NOT NULL,
+	"points" numeric DEFAULT '0' NOT NULL,
+	"habit_spend_pct" integer DEFAULT 40 NOT NULL,
+	"habit_save_pct" integer DEFAULT 30 NOT NULL,
+	"habit_invest_pct" integer DEFAULT 30 NOT NULL,
+	"habit_consistency" numeric DEFAULT '0' NOT NULL,
+	"points_frozen_until" timestamp with time zone,
+	"streak_break_count" integer DEFAULT 0 NOT NULL,
+	"recovery_bonus_used" boolean DEFAULT false NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "user_stats_snapshots" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"timestamp" timestamp with time zone DEFAULT now() NOT NULL,
@@ -64,23 +115,20 @@ CREATE TABLE "user_stats_snapshots" (
 	"block_number" bigint NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "user_habits" (
-	"address" text PRIMARY KEY NOT NULL,
-	"total_saved" numeric DEFAULT '0' NOT NULL,
-	"current_streak" integer DEFAULT 0 NOT NULL,
-	"longest_streak" integer DEFAULT 0 NOT NULL,
-	"streak_start" timestamp with time zone,
-	"last_save_date" date,
-	"streak_broken_count" integer DEFAULT 0 NOT NULL,
-	"points" numeric DEFAULT '0' NOT NULL,
-	"habit_spend_pct" integer DEFAULT 40 NOT NULL,
-	"habit_save_pct" integer DEFAULT 30 NOT NULL,
-	"habit_invest_pct" integer DEFAULT 30 NOT NULL,
-	"habit_consistency" numeric DEFAULT '0' NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+CREATE TABLE "user_transactions" (
+	"id" bigserial PRIMARY KEY NOT NULL,
+	"user_address" varchar(42) NOT NULL,
+	"type" varchar(32) NOT NULL,
+	"amount" numeric DEFAULT '0' NOT NULL,
+	"date" date NOT NULL,
+	"block_number" numeric NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX "idx_daily_volume_date" ON "daily_volume" USING btree ("date" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "idx_pos_registry_active" ON "position_registry" USING btree ("is_active");--> statement-breakpoint
+CREATE INDEX "idx_pos_registry_ticks" ON "position_registry" USING btree ("tick_lower","tick_upper");--> statement-breakpoint
 CREATE INDEX "idx_pos_snapshots_token_ts" ON "position_snapshots" USING btree ("token_id","timestamp" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "idx_snapshots_ts" ON "treasury_snapshots" USING btree ("timestamp" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "idx_user_stats_ts" ON "user_stats_snapshots" USING btree ("timestamp" DESC NULLS LAST);
+CREATE INDEX "idx_user_stats_ts" ON "user_stats_snapshots" USING btree ("timestamp" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "idx_user_txns_user_date" ON "user_transactions" USING btree ("user_address","date" DESC NULLS LAST);

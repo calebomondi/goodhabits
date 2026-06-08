@@ -1,5 +1,5 @@
 {
-  "id": "11a14ba5-8435-407d-b2e2-55a5d0129442",
+  "id": "18bae15e-7a3e-433d-8a79-b2d88c1ea1b7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -137,6 +137,231 @@
           "nullsNotDistinct": false,
           "columns": [
             "date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.indexer_state": {
+      "name": "indexer_state",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "'default'"
+        },
+        "last_indexed_block": {
+          "name": "last_indexed_block",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.offramp_requests": {
+      "name": "offramp_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_address": {
+          "name": "user_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_g": {
+          "name": "amount_g",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_fiat": {
+          "name": "amount_fiat",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rate_used": {
+          "name": "rate_used",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_currency": {
+          "name": "target_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'USD'"
+        },
+        "usdc_recipient": {
+          "name": "usdc_recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "beneficiary": {
+          "name": "beneficiary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "swap_tx_hash": {
+          "name": "swap_tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.position_registry": {
+      "name": "position_registry",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tick_lower": {
+          "name": "tick_lower",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tick_upper": {
+          "name": "tick_upper",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_pos_registry_active": {
+          "name": "idx_pos_registry_active",
+          "columns": [
+            {
+              "expression": "is_active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_pos_registry_ticks": {
+          "name": "idx_pos_registry_ticks",
+          "columns": [
+            {
+              "expression": "tick_lower",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tick_upper",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "position_registry_token_id_unique": {
+          "name": "position_registry_token_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token_id"
           ]
         }
       },
@@ -377,6 +602,127 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.user_habits": {
+      "name": "user_habits",
+      "schema": "",
+      "columns": {
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "total_saved": {
+          "name": "total_saved",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "current_streak": {
+          "name": "current_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "longest_streak": {
+          "name": "longest_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "streak_start": {
+          "name": "streak_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_save_date": {
+          "name": "last_save_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "streak_broken_count": {
+          "name": "streak_broken_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "points": {
+          "name": "points",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "habit_spend_pct": {
+          "name": "habit_spend_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 40
+        },
+        "habit_save_pct": {
+          "name": "habit_save_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 30
+        },
+        "habit_invest_pct": {
+          "name": "habit_invest_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 30
+        },
+        "habit_consistency": {
+          "name": "habit_consistency",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "points_frozen_until": {
+          "name": "points_frozen_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "streak_break_count": {
+          "name": "streak_break_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "recovery_bonus_used": {
+          "name": "recovery_bonus_used",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.user_stats_snapshots": {
       "name": "user_stats_snapshots",
       "schema": "",
@@ -481,100 +827,78 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.user_habits": {
-      "name": "user_habits",
+    "public.user_transactions": {
+      "name": "user_transactions",
       "schema": "",
       "columns": {
-        "address": {
-          "name": "address",
-          "type": "text",
+        "id": {
+          "name": "id",
+          "type": "bigserial",
           "primaryKey": true,
           "notNull": true
         },
-        "total_saved": {
-          "name": "total_saved",
+        "user_address": {
+          "name": "user_address",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
           "type": "numeric",
           "primaryKey": false,
           "notNull": true,
           "default": "'0'"
         },
-        "current_streak": {
-          "name": "current_streak",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "longest_streak": {
-          "name": "longest_streak",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "streak_start": {
-          "name": "streak_start",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_save_date": {
-          "name": "last_save_date",
+        "date": {
+          "name": "date",
           "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "streak_broken_count": {
-          "name": "streak_broken_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "points": {
-          "name": "points",
+        "block_number": {
+          "name": "block_number",
           "type": "numeric",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
+          "notNull": true
         },
-        "habit_spend_pct": {
-          "name": "habit_spend_pct",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 40
-        },
-        "habit_save_pct": {
-          "name": "habit_save_pct",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 30
-        },
-        "habit_invest_pct": {
-          "name": "habit_invest_pct",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 30
-        },
-        "habit_consistency": {
-          "name": "habit_consistency",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "updated_at": {
-          "name": "updated_at",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_user_txns_user_date": {
+          "name": "idx_user_txns_user_date",
+          "columns": [
+            {
+              "expression": "user_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
