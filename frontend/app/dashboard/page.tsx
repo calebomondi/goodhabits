@@ -20,8 +20,8 @@ import { useIsMobile } from "@/hooks/use-mobile"
 
 export default function Page() {
   const isMobile = useIsMobile()
-  const [leftOpen, setLeftOpen] = useState(true)
-  const [rightOpen, setRightOpen] = useState(true)
+  const [leftOpen, setLeftOpen] = useState(false)
+  const [rightOpen, setRightOpen] = useState(false)
   const { address } = useAccount()
   const [tab, setTab] = useState<"trend" | "leaderboard">("trend")
 
@@ -68,7 +68,11 @@ export default function Page() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => setLeftOpen((prev) => !prev)}
+              onClick={() => {
+                const next = !leftOpen
+                setLeftOpen(next)
+                if (next) setRightOpen(false)
+              }}
               className="-ml-1"
             >
               <PanelLeftIcon className="size-4" />
@@ -80,7 +84,11 @@ export default function Page() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setRightOpen((prev) => !prev)}
+                onClick={() => {
+                  const next = !rightOpen
+                  setRightOpen(next)
+                  if (next) setLeftOpen(false)
+                }}
               >
                 <img src="/gooddollar.webp" alt="GoodDollar" className="size-6" />
               </Button>
@@ -116,7 +124,7 @@ export default function Page() {
               {tab === "trend" ? (
                 <>
                   <div className="px-4 lg:px-6">
-                    <ChartAreaInteractive />
+                    <ChartAreaInteractive address={address} />
                   </div>
                     <DataTable data={txns ?? []} loading={txnsLoading} />
                 </>

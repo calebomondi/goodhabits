@@ -53,7 +53,7 @@ export function useTokenBalance(
   tokenAddress: `0x${string}`,
   userAddress?: `0x${string}`,
 ) {
-  const { data: raw, isLoading, isError } = useReadContract({
+  const { data: raw, isLoading, isError, refetch } = useReadContract({
     address: tokenAddress,
     abi: ERC20_ABI,
     functionName: "balanceOf",
@@ -72,7 +72,7 @@ export function useTokenBalance(
   const balance =
     raw !== undefined ? Number(formatUnits(raw, decimals)) : null
 
-  return { balance, raw, decimals, isLoading, isError }
+  return { balance, raw, decimals, isLoading, isError, refetch }
 }
 
 // ─── useTokenPrice ──────────────────────────────────────────────────
@@ -161,7 +161,7 @@ export function useGetUserHabit(userAddress?: `0x${string}`, chainId?: number) {
 // ─── useGetUserAllocation ──────────────────────────────────────────────
 export function useGetUserAllocation(userAddress?: `0x${string}`, chainId?: number) {
   const treasuryAddress = getTreasuryAddress(chainId)
-  const { data, isLoading, isError } = useReadContract({
+  const { data, isLoading, isError, refetch } = useReadContract({
     address: treasuryAddress,
     abi: TREASURY_ABI,
     functionName: "getUserAllocation",
@@ -172,7 +172,7 @@ export function useGetUserAllocation(userAddress?: `0x${string}`, chainId?: numb
     data && typeof data === "object" && "spendAmount" in data && "saveAmount" in data && "investAmount" in data
       ? { spendAmount: data.spendAmount as bigint, saveAmount: data.saveAmount as bigint, investAmount: data.investAmount as bigint }
       : null
-  return { allocation, isLoading, isError } as const
+  return { allocation, isLoading, isError, refetch } as const
 }
 
 // ─── useDeposit ──────────────────────────────────────────────────────
@@ -233,20 +233,20 @@ export function useSetHabitStrategy(chainId?: number) {
 // ─── useTargetSavingsUnlock ──────────────────────────────────────────
 export function useTargetSavingsUnlock(userAddress?: `0x${string}`, chainId?: number) {
   const treasuryAddress = getTreasuryAddress(chainId)
-  const { data, isLoading, isError } = useReadContract({
+  const { data, isLoading, isError, refetch } = useReadContract({
     address: treasuryAddress,
     abi: TREASURY_ABI,
     functionName: "targetSavingsUnlock",
     args: userAddress ? [userAddress] : undefined,
     query: { enabled: !!userAddress },
   })
-  return { unlockTimestamp: data ?? null, isLoading, isError } as const
+  return { unlockTimestamp: data ?? null, isLoading, isError, refetch } as const
 }
 
 // ─── useBrokeHabits ──────────────────────────────────────────────────
 export function useBrokeHabits(userAddress?: `0x${string}`, chainId?: number) {
   const treasuryAddress = getTreasuryAddress(chainId)
-  const { data, isLoading, isError } = useReadContract({
+  const { data, isLoading, isError, refetch } = useReadContract({
     address: treasuryAddress,
     abi: TREASURY_ABI,
     functionName: "brokeHabits",
@@ -257,7 +257,7 @@ export function useBrokeHabits(userAddress?: `0x${string}`, chainId?: number) {
     data && typeof data === "object" && "savings" in data && "investments" in data
       ? { savings: data.savings as bigint, investments: data.investments as bigint }
       : null
-  return { brokeHabits: brokeHabitsData, isLoading, isError } as const
+  return { brokeHabits: brokeHabitsData, isLoading, isError, refetch } as const
 }
 
 // ─── useSetTargetSavingsUnlock ───────────────────────────────────────

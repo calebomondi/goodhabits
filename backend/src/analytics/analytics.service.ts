@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { asc, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
 import { type Address, formatUnits } from 'viem'
 import { DRIZZLE } from '../drizzle/drizzle.module'
 import { treasurySnapshots } from '../drizzle/schema/treasury-snapshots'
@@ -272,5 +272,51 @@ export class AnalyticsService {
       .limit(100)
 
     return rows
+  }
+
+  async getUserVolumeHistory(user: Address, range: Range) {
+    const since = this.rangeToDate(range)
+    const sinceStr = since.toISOString().slice(0, 10)
+    const address = typeof user === 'string' ? user.toLowerCase() : user
+
+    const rows = await this.db
+      .select({
+        date: userTransactions.date,
+        type: userTransactions.type,
+        amount: sql<string>`SUM(${userTransactions.amount})`,
+      })
+      .from(userTransactions)
+      .where(
+        and(
+          eq(userTransactions.userAddress, address),
+          gte(userTransactions.date, sinceStr),
+        ),
+      )
+      .groupBy(userTransactions.date, userTransactions.type)
+      .orderBy(asc(userTransactions.date))
+
+    const grouped: Record<string, { deposits: bigint; withdrawals: bigint }> = {}
+    for (const r of rows) {
+      if (!grouped[r.date]) grouped[r.date] = { deposits: 0n, withdrawals: 0n }
+      const amt = BigInt(r.amount)
+      if (r.type === 'deposit') {
+        grouped[r.date].deposits += amt
+      } else {
+        grouped[r.date].withdrawals += amt
+      }
+    }
+
+    return {
+      data: Object.entries(grouped).map(([date, v]) => {
+        const deposits = v.deposits.toString()
+        const withdrawals = v.withdrawals.toString()
+        return {
+          date,
+          deposits,
+          withdrawals,
+          netFlow: (v.deposits - v.withdrawals).toString(),
+        }
+      }),
+    }
   }
 }

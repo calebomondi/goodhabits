@@ -80,7 +80,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   const userActiveRequestCount = activeRequests?.filter(r => r.status === 0 || r.status === 1).length ?? 0
   const MAX_ACTIVE_REQUESTS = 10
 
-  const [openSection, setOpenSection] = React.useState<string | null>("habit")
+  const [openSection, setOpenSection] = React.useState<string | null>(null)
 
   // ─── Habit Strategy ───
   const [spendPct, setSpendPct] = React.useState("")
@@ -93,11 +93,11 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   const isOverLimit = totalPct > 100
 
   // ─── Savings ───
-  const { allocation, isLoading: loadingAllocation } = useGetUserAllocation(address, chainId)
+  const { allocation, isLoading: loadingAllocation, refetch: refetchAllocation } = useGetUserAllocation(address, chainId)
   const savedAmount = allocation ? Number(allocation.saveAmount) / 1e18 : 0
   const now = Date.now() / 1000
-  const { unlockTimestamp, isLoading: isLoadingUnlock } = useTargetSavingsUnlock(address, chainId)
-  const { brokeHabits, isLoading: isLoadingBroke } = useBrokeHabits(address, chainId)
+  const { unlockTimestamp, isLoading: isLoadingUnlock, refetch: refetchUnlock } = useTargetSavingsUnlock(address, chainId)
+  const { brokeHabits, isLoading: isLoadingBroke, refetch: refetchBrokeHabits } = useBrokeHabits(address, chainId)
   const { setLock: writeSetLock, isWritePending: lockPending, isConfirming: lockConfirming, isConfirmed: lockConfirmed } = useSetTargetSavingsUnlock(chainId)
   const { data: leaderboardStatus } = useQuery({
     queryKey: ["leaderboard", "status", address],
@@ -181,6 +181,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   const [investBackendAddress, setInvestBackendAddress] = React.useState<string | null>(null)
   const [investOfframpRequestId, setInvestOfframpRequestId] = React.useState<number | null>(null)
   const [investOfframpSubmitted, setInvestOfframpSubmitted] = React.useState<{ amountFiat: string; currency: string; recipient: string } | null>(null)
+  const habitSetRef = React.useRef(false)
   const [offrampTargetRequest, setOfframpTargetRequest] = React.useState<{ requestId: bigint; g$Wei: bigint } | null>(null)
   const { data: investOfframpRate } = useQuery({
     queryKey: ["offramp", "rate", investOfframpCurrency],
@@ -240,7 +241,18 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   const { isLoading: depositConfirming } = useWaitForTransactionReceipt({ hash: depositHash })
 
   React.useEffect(() => {
-    if (setHabitConfirmed) toast.success("Habit strategy saved on-chain!")
+    if (setHabitConfirmed) {
+      toast.success("Habit strategy saved on-chain!")
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0] as Record<string, unknown>
+          return k?.entity === 'readContract' && (
+            k?.functionName === 'hasUserSetStrategy' ||
+            k?.functionName === 'getUserHabit'
+          )
+        },
+      })
+    }
   }, [setHabitConfirmed])
 
   React.useEffect(() => {
@@ -261,6 +273,13 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   }, [isConfirmed, withdrawAction, address, queryClient])
 
   function invalidateAfterTx() {
+    refetchAllocation()
+    queryClient.invalidateQueries({
+      predicate: (q) => {
+        const k = q.queryKey[0] as Record<string, unknown>
+        return k?.entity === 'readContract' && k?.functionName === 'balanceOf' && k?.address === TOKENS.G$
+      },
+    })
     queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
     queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
     queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
@@ -277,6 +296,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
 
   React.useEffect(() => {
     if (requestConfirmed) {
+      setRequestAmount("")
       toast.success("Withdrawal request submitted on-chain!")
       invalidateAfterTx()
     }
@@ -297,7 +317,12 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   }, [cancelConfirmed])
 
   React.useEffect(() => {
-    if (lockConfirmed) toast.success("Savings lock set on-chain!")
+    if (lockConfirmed) {
+      setLockDuration("")
+      toast.success("Savings lock set on-chain!")
+      refetchUnlock()
+      refetchBrokeHabits()
+    }
   }, [lockConfirmed])
 
   // ── Investment offramp: step 1 — finalize confirmed → fetch beneficiary ──
@@ -348,6 +373,8 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
           setInvestOfframpSubmitted({ amountFiat: investOfframpFiat, currency: investOfframpCurrency, recipient: investOfframpRecipient })
           setInvestOfframpStep('done')
           setInvestOfframpRequestId(data.id)
+          setInvestOfframpFiat("")
+          setInvestOfframpRecipient("")
           toast.success("Offramp request submitted!")
         })
         .catch(() => {
@@ -369,6 +396,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   // Offramp chain: step 2 — withdraw confirmed → fetch beneficiary → trigger approve
   React.useEffect(() => {
     if (isConfirmed && offrampStep === 'withdraw' && withdrawAction === 'offramp') {
+      invalidateAfterTx()
       fetch('/api/offramp/beneficiary')
         .then(r => r.json())
         .then(data => {
@@ -437,9 +465,10 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   }, [approveError, offrampStep])
 
   React.useEffect(() => {
-    if (habit && !isLoadingHabit && hasSetStrategy) {
+    if (habit && !isLoadingHabit && hasSetStrategy && !habitSetRef.current) {
       setSpendPct(String(Number(habit.toSpend) / 100))
       setSavePct(String(Number(habit.toSave) / 100))
+      habitSetRef.current = true
     }
   }, [habit, isLoadingHabit, hasSetStrategy])
 

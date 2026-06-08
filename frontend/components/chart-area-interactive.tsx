@@ -65,7 +65,7 @@ type VolumeResponse = {
   data: VolumeDataPoint[]
 }
 
-export function ChartAreaInteractive() {
+export function ChartAreaInteractive({ address }: { address?: `0x${string}` }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
 
@@ -76,9 +76,9 @@ export function ChartAreaInteractive() {
   }, [isMobile])
 
   const { data: raw, isPending, isError } = useQuery<VolumeResponse>({
-    queryKey: ["analytics", "volume", timeRange],
+    queryKey: ["analytics", "volume", timeRange, address],
     queryFn: () =>
-      fetch(`/api/analytics/volume?range=${timeRange}`).then((r) => r.json()),
+      fetch(`/api/analytics/volume?range=${timeRange}${address ? `&user=${address}` : ''}`).then((r) => r.json()),
     staleTime: 0,
     refetchInterval: 30_000,
   })

@@ -246,7 +246,7 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
 
   const [isVerifying, setIsVerifying] = React.useState(false)
   const [depositAmount, setDepositAmount] = React.useState("")
-  const { balance: g$Balance, isLoading: g$Loading } = useTokenBalance(TOKENS.G$, address)
+  const { balance: g$Balance, isLoading: g$Loading, refetch: refetchBalance } = useTokenBalance(TOKENS.G$, address)
   const { deposit: writeDeposit, isWritePending: depositPending, isConfirming: depositConfirming, isConfirmed: depositConfirmed } = useDeposit(chainId)
   const { hasSetStrategy, isLoading: isCheckingStrategy } = useHasUserSetStrategy(address, chainId)
   const treasuryAddress = getTreasuryAddress(chainId)
@@ -285,6 +285,7 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
       const tx = await claimSDK.claim()
       if (tx) {
         setClaimAmount(null)
+        refetchBalance()
         toast.success("UBI claim successful!")
       }
     } catch (err) {
@@ -369,6 +370,8 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
 
   React.useEffect(() => {
     if (depositConfirmed) {
+      setDepositAmount("")
+      refetchBalance()
       queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
       queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
       queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
@@ -389,7 +392,7 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
           queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
         })
     }
-  }, [depositConfirmed, address, queryClient])
+  }, [depositConfirmed, address, queryClient, refetchBalance])
 
   React.useEffect(() => {
     if (pendingDeposit && isApproved) {

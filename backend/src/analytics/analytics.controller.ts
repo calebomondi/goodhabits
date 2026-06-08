@@ -25,7 +25,11 @@ export class AnalyticsController {
   }
 
   @Get('volume')
-  volume(@Query('range') range: '7d' | '30d' | '90d' = '90d') {
+  volume(
+    @Query('range') range: '7d' | '30d' | '90d' = '90d',
+    @Query('user') user?: string,
+  ) {
+    if (user) return this.analytics.getUserVolumeHistory(user as `0x${string}`, range)
     return this.analytics.getVolumeHistory(range)
   }
 
