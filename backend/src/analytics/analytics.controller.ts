@@ -65,8 +65,8 @@ export class AnalyticsController {
   }
 
   @Post('refresh')
-  async refresh(@Query('user') user: string) {
-    await this.snapshot.refreshUser(user as `0x${string}`)
+  async refresh(@Query('user') user: string, @Query('txHash') txHash?: string) {
+    await this.snapshot.refreshUser(user as `0x${string}`, txHash as `0x${string}`)
     return { success: true }
   }
 }
