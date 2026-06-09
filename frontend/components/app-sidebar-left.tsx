@@ -30,6 +30,7 @@ import {
   TrendingUp,
   CheckCircle2,
   Clock,
+  Info,
   LoaderCircle,
   ChevronDown,
   Lock,
@@ -150,6 +151,8 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
     ? Math.ceil(Number.parseFloat(offrampFiatAmount) / displayRate)
     : 0
   const hasEnoughBalance = offrampG$Needed > 0 && offrampG$Needed <= withdrawableBalance[withdrawBucket]
+  const minG$ForOfframp = displayRate > 0 ? Math.ceil(1 / displayRate) : 2
+  const canOfframpMinimum = withdrawableBalance[withdrawBucket] >= minG$ForOfframp
   const CURRENCIES = [
     { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
     { code: 'NGN', symbol: '₦', name: 'Nigerian Naira', flag: '🇳🇬' },
@@ -873,6 +876,13 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                         </div>
                       </div>
 
+                      {!canOfframpMinimum && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 flex items-center gap-1.5">
+                          <Info className="size-3.5 shrink-0" />
+                          Minimum offramp is ~{minG$ForOfframp} G$ (~$1). Your {withdrawBucket} balance ({withdrawableBalance[withdrawBucket].toFixed(2)} G$) is too low.
+                        </div>
+                      )}
+
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{activeCurrency.symbol}</span>
                         <Input
@@ -886,6 +896,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                           }}
                           placeholder="0.00"
                           className="pl-7 pr-12 h-9 text-base"
+                          disabled={!canOfframpMinimum}
                         />
                       </div>
 
@@ -905,6 +916,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                           onChange={(e) => setOfframpRecipient(e.target.value)}
                           placeholder="0x..."
                           className="h-9 text-sm font-mono"
+                          disabled={!canOfframpMinimum}
                         />
                       </div>
 
@@ -959,6 +971,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                             doWithdraw(amount, withdrawBucket as "spendable" | "savings")
                           }}
                           disabled={
+                            !canOfframpMinimum ||
                             !offrampFiatAmount ||
                             !offrampRecipient ||
                             !hasEnoughBalance ||
