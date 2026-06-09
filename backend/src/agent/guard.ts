@@ -13,7 +13,11 @@ const TOPIC_KEYWORDS = [
   "goodhabit", "compound", "reinvest", "liquidity", "pool",
   "passive", "income", "budget", "goal", "split", "deploy",
   "how do i", "how can i", "help me",
-  "offramp", "cash out", "convert",
+  "offramp", "cash out", "convert", "rate",
+  // greetings — let the LLM decide if it's on-topic
+  "hi", "hello", "hey", "greetings", "good morning",
+  "good afternoon", "good evening", "sup", "yo", "howdy",
+  "what's up", "how are you",
 ]
 
 export function isOnTopic(message: string): boolean {
