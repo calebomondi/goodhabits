@@ -385,6 +385,73 @@ export class VolumeIndexerService {
     return result
   }
 
+  async indexUserEventByTxHash(user: `0x${string}`, txHash: `0x${string}`): Promise<number> {
+    const contractAddress = this.config.get<string>('TREASURY_CONTRACT') as `0x${string}`
+    if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') return 0
+
+    const receipt = await this.client.getTransactionReceipt({ hash: txHash })
+    if (receipt.status !== 'success') return 0
+
+    const block = await this.client.getBlock({ blockNumber: receipt.blockNumber })
+    const date = dateFromBlockTs(block.timestamp)
+    const lowerUser = user.toLowerCase()
+
+    let inserted = 0
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== contractAddress.toLowerCase()) continue
+
+      const topic0 = log.topics[0]
+      if (!topic0 || !EVENT_SIGNATURES.includes(topic0)) continue
+
+      let eventUser: string | null = null
+      let type = ''
+      let amount = 0n
+
+      if (topic0 === DEPOSIT_EVENT && log.topics[1]) {
+        eventUser = `0x${log.topics[1].slice(-40)}`
+        type = 'deposit'
+        amount = decodeData(log.data, 0)
+      } else if (topic0 === WITHDRAW_EVENT && log.topics[1]) {
+        eventUser = `0x${log.topics[1].slice(-40)}`
+        const from = Number(decodeData(log.data, 1))
+        type = from === 0 ? 'withdraw_spendable' : 'withdraw_savings'
+        amount = decodeData(log.data, 0)
+      } else if (topic0 === WITHDRAWAL_FINALIZED_EVENT && log.topics[2]) {
+        eventUser = `0x${log.topics[2].slice(-40)}`
+        type = 'withdrawal_finalized'
+        amount = decodeData(log.data, 0)
+      }
+
+      if (!eventUser || eventUser.toLowerCase() !== lowerUser || amount === 0n) continue
+
+      const bn = typeof receipt.blockNumber === 'bigint' ? receipt.blockNumber : BigInt(receipt.blockNumber)
+
+      const existing = await this.db
+        .select({ id: userTransactions.id })
+        .from(userTransactions)
+        .where(and(
+          eq(userTransactions.userAddress, lowerUser),
+          eq(userTransactions.blockNumber, bn.toString()),
+          eq(userTransactions.type, type),
+        ))
+        .limit(1)
+
+      if (existing.length > 0) continue
+
+      await this.db.insert(userTransactions).values({
+        userAddress: eventUser,
+        type,
+        amount: amount.toString(),
+        date,
+        blockNumber: bn.toString(),
+      })
+      inserted++
+      console.log(`[VolumeIndexer] indexed ${type} from tx ${txHash} for ${eventUser}: ${amount}`)
+    }
+
+    return inserted
+  }
+
   async indexUserEvents(user: `0x${string}`, currentBlock: bigint): Promise<void> {
     const fromBlock = currentBlock - 200n > 0n ? currentBlock - 200n : 0n
     if (fromBlock >= currentBlock) return
