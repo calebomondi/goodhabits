@@ -273,25 +273,27 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   }, [isConfirmed, withdrawAction, address, queryClient])
 
   function invalidateAfterTx() {
-    refetchAllocation()
-    queryClient.invalidateQueries({
-      predicate: (q) => {
-        const k = q.queryKey[0] as Record<string, unknown>
-        return k?.entity === 'readContract' && k?.functionName === 'balanceOf' && k?.address === TOKENS.G$
-      },
-    })
-    queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
-    queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
-    queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-    queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-    queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
-    queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
-    queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
-    queryClient.invalidateQueries({ queryKey: ["treasury", "requests", address] })
-    refetchPosition()
-    refetchRequests()
-
     fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
+      .catch(() => {})
+      .then(() => {
+        refetchAllocation()
+        queryClient.invalidateQueries({
+          predicate: (q) => {
+            const k = q.queryKey[0] as Record<string, unknown>
+            return k?.entity === 'readContract' && k?.functionName === 'balanceOf' && k?.address === TOKENS.G$
+          },
+        })
+        queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
+        queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
+        queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
+        queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
+        queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
+        queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
+        queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
+        queryClient.invalidateQueries({ queryKey: ["treasury", "requests", address] })
+        refetchPosition()
+        refetchRequests()
+      })
   }
 
   React.useEffect(() => {
