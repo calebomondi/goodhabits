@@ -228,6 +228,7 @@ export class SnapshotService {
 
   async refreshUser(user: `0x${string}`): Promise<void> {
     const blockNumber = await this.client.getBlockNumber()
+    await this.volumeIndexer.indexUserEvents(user, blockNumber)
     await this.volumeIndexer.indexEvents(blockNumber)
 
     const alloc = await this.treasury.getUserAllocation(user) as { spendAmount: bigint; saveAmount: bigint; investAmount: bigint }
