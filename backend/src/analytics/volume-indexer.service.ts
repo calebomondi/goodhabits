@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { type PublicClient, keccak256, toHex } from 'viem'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { PUBLIC_CLIENT } from '../modules/viem.provider'
 import { DRIZZLE } from '../drizzle/drizzle.module'
 import { dailyVolume } from '../drizzle/schema/daily-volume'
@@ -256,8 +256,22 @@ export class VolumeIndexerService {
     }
 
     if (userTxns.length > 0) {
-      await this.db.insert(userTransactions).values(userTxns)
-      console.log('[VolumeIndexer] inserted', userTxns.length, 'user transactions')
+      const addresses = [...new Set(userTxns.map(t => t.userAddress))]
+      const existing = await this.db
+        .select({ userAddress: userTransactions.userAddress, blockNumber: userTransactions.blockNumber, type: userTransactions.type })
+        .from(userTransactions)
+        .where(and(
+          inArray(userTransactions.userAddress, addresses),
+          inArray(userTransactions.blockNumber, [...new Set(userTxns.map(t => t.blockNumber))]),
+        ))
+      const existingKeys = new Set(existing.map(r => `${r.userAddress}:${r.blockNumber}:${r.type}`))
+      const toInsert = userTxns.filter(t => !existingKeys.has(`${t.userAddress}:${t.blockNumber}:${t.type}`))
+      if (toInsert.length > 0) {
+        await this.db.insert(userTransactions).values(toInsert)
+        console.log('[VolumeIndexer] inserted', toInsert.length, 'user transactions')
+      } else {
+        console.log('[VolumeIndexer] all user transactions already exist, skipping')
+      }
     } else {
       console.log('[VolumeIndexer] no user transactions to insert')
     }
@@ -303,21 +317,26 @@ export class VolumeIndexerService {
     await this.persistLastIndexedBlock(snapshotBlock)
   }
 
-  async indexUserEvents(user: `0x${string}`, currentBlock: bigint): Promise<void> {
+  private async fetchUserEvents(user: `0x${string}`, fromBlock: bigint, toBlock: bigint): Promise<Array<{
+    userAddress: string
+    type: string
+    amount: string
+    date: string
+    blockNumber: string
+  }>> {
     const contractAddress = this.config.get<string>('TREASURY_CONTRACT') as `0x${string}`
-    if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') return
+    if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') return []
 
-    const fromBlock = currentBlock - 200n > 0n ? currentBlock - 200n : 0n
-    if (fromBlock >= currentBlock) return
+    if (fromBlock >= toBlock) return []
 
     const logs = await this.client.getLogs({
       address: contractAddress,
       fromBlock,
-      toBlock: currentBlock,
+      toBlock,
     })
 
     const lowerUser = user.toLowerCase()
-    const userTxns: Array<{
+    const result: Array<{
       userAddress: string
       type: string
       amount: string
@@ -354,7 +373,7 @@ export class VolumeIndexerService {
       const block = await this.client.getBlock({ blockNumber: blockNum })
       const date = dateFromBlockTs(block.timestamp)
 
-      userTxns.push({
+      result.push({
         userAddress: eventUser,
         type,
         amount: amount.toString(),
@@ -363,13 +382,27 @@ export class VolumeIndexerService {
       })
     }
 
+    return result
+  }
+
+  async indexUserEvents(user: `0x${string}`, currentBlock: bigint): Promise<void> {
+    const fromBlock = currentBlock - 200n > 0n ? currentBlock - 200n : 0n
+    if (fromBlock >= currentBlock) return
+
+    let userTxns = await this.fetchUserEvents(user, fromBlock, currentBlock)
+
+    if (userTxns.length === 0) {
+      await new Promise(r => setTimeout(r, 2000))
+      userTxns = await this.fetchUserEvents(user, fromBlock, currentBlock)
+    }
+
     if (userTxns.length === 0) return
 
     const existing = await this.db
       .select({ blockNumber: userTransactions.blockNumber, type: userTransactions.type })
       .from(userTransactions)
       .where(and(
-        eq(userTransactions.userAddress, lowerUser),
+        eq(userTransactions.userAddress, user.toLowerCase()),
       ))
 
     const existingKeys = new Set(existing.map(r => `${r.blockNumber}:${r.type}`))
