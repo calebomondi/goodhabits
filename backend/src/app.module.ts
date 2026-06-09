@@ -11,11 +11,13 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AgentModule } from './agent/agent.module';
 import { OfframpModule } from './offramp/offramp.module';
 import { AdminModule } from './admin/admin.module';
+import { InvestmentModule } from './investment/investment.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AdminModule,
+    InvestmentModule,
     WorkersModule,
     ViemModule,
     UniswapModule,
