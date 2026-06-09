@@ -247,7 +247,7 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
   const [isVerifying, setIsVerifying] = React.useState(false)
   const [depositAmount, setDepositAmount] = React.useState("")
   const { balance: g$Balance, isLoading: g$Loading, refetch: refetchBalance } = useTokenBalance(TOKENS.G$, address)
-  const { deposit: writeDeposit, isWritePending: depositPending, isConfirming: depositConfirming, isConfirmed: depositConfirmed } = useDeposit(chainId)
+  const { deposit: writeDeposit, hash: depositHash, isWritePending: depositPending, isConfirming: depositConfirming, isConfirmed: depositConfirmed } = useDeposit(chainId)
   const { hasSetStrategy, isLoading: isCheckingStrategy } = useHasUserSetStrategy(address, chainId)
   const treasuryAddress = getTreasuryAddress(chainId)
   const { allowance, isLoading: allowanceLoading, refetch: refetchAllowance } = useAllowance(TOKENS.G$, address, treasuryAddress)
@@ -372,7 +372,7 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
     if (depositConfirmed) {
       setDepositAmount("")
 
-      fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
+      fetch(`/api/analytics/refresh?user=${address}${depositHash ? `&txHash=${depositHash}` : ''}`, { method: "POST" })
         .finally(() => {
           refetchBalance()
           queryClient.invalidateQueries({
@@ -389,13 +389,13 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
           })
           queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
           queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-          queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-          queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
+          queryClient.refetchQueries({ queryKey: ["user-txns", address] })
+          queryClient.refetchQueries({ queryKey: ["analytics", "volume"] })
           queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
           queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
         })
     }
-  }, [depositConfirmed, address, queryClient, refetchBalance])
+  }, [depositConfirmed, address, depositHash, queryClient, refetchBalance])
 
   React.useEffect(() => {
     if (pendingDeposit && isApproved) {
