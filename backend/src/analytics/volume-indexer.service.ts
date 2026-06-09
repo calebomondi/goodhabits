@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { type PublicClient, keccak256, toHex } from 'viem'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { PUBLIC_CLIENT } from '../modules/viem.provider'
 import { DRIZZLE } from '../drizzle/drizzle.module'
 import { dailyVolume } from '../drizzle/schema/daily-volume'
@@ -301,5 +301,83 @@ export class VolumeIndexerService {
 
     this.lastIndexedBlock = snapshotBlock
     await this.persistLastIndexedBlock(snapshotBlock)
+  }
+
+  async indexUserEvents(user: `0x${string}`, currentBlock: bigint): Promise<void> {
+    const contractAddress = this.config.get<string>('TREASURY_CONTRACT') as `0x${string}`
+    if (!contractAddress || contractAddress === '0x0000000000000000000000000000000000000000') return
+
+    const fromBlock = currentBlock - 200n > 0n ? currentBlock - 200n : 0n
+    if (fromBlock >= currentBlock) return
+
+    const logs = await this.client.getLogs({
+      address: contractAddress,
+      fromBlock,
+      toBlock: currentBlock,
+    })
+
+    const lowerUser = user.toLowerCase()
+    const userTxns: Array<{
+      userAddress: string
+      type: string
+      amount: string
+      date: string
+      blockNumber: string
+    }> = []
+
+    for (const log of logs) {
+      const topic0 = log.topics[0]
+      if (!topic0 || !EVENT_SIGNATURES.includes(topic0)) continue
+
+      let eventUser: string | null = null
+      let type = ''
+      let amount = 0n
+
+      if (topic0 === DEPOSIT_EVENT && log.topics[1]) {
+        eventUser = `0x${log.topics[1].slice(-40)}`
+        type = 'deposit'
+        amount = decodeData(log.data, 0)
+      } else if (topic0 === WITHDRAW_EVENT && log.topics[1]) {
+        eventUser = `0x${log.topics[1].slice(-40)}`
+        const from = Number(decodeData(log.data, 1))
+        type = from === 0 ? 'withdraw_spendable' : 'withdraw_savings'
+        amount = decodeData(log.data, 0)
+      } else if (topic0 === WITHDRAWAL_FINALIZED_EVENT && log.topics[2]) {
+        eventUser = `0x${log.topics[2].slice(-40)}`
+        type = 'withdrawal_finalized'
+        amount = decodeData(log.data, 0)
+      }
+
+      if (!eventUser || eventUser.toLowerCase() !== lowerUser || amount === 0n) continue
+
+      const blockNum = typeof log.blockNumber === 'bigint' ? log.blockNumber : BigInt(log.blockNumber)
+      const block = await this.client.getBlock({ blockNumber: blockNum })
+      const date = dateFromBlockTs(block.timestamp)
+
+      userTxns.push({
+        userAddress: eventUser,
+        type,
+        amount: amount.toString(),
+        date,
+        blockNumber: blockNum.toString(),
+      })
+    }
+
+    if (userTxns.length === 0) return
+
+    const existing = await this.db
+      .select({ blockNumber: userTransactions.blockNumber, type: userTransactions.type })
+      .from(userTransactions)
+      .where(and(
+        eq(userTransactions.userAddress, lowerUser),
+      ))
+
+    const existingKeys = new Set(existing.map(r => `${r.blockNumber}:${r.type}`))
+    const toInsert = userTxns.filter(t => !existingKeys.has(`${t.blockNumber}:${t.type}`))
+
+    if (toInsert.length === 0) return
+
+    await this.db.insert(userTransactions).values(toInsert)
+    console.log(`[VolumeIndexer] indexed ${toInsert.length} user events for ${user}`)
   }
 }
