@@ -21,114 +21,24 @@ export type ChatResponse = {
   suggested_actions?: string[]
 }
 
-const SYSTEM_PROMPT = (address: string) => `You are a GoodHabit Assistant. You help users understand GoodHabit, their portfolio, UBI claims, savings habits, investment strategies, treasury metrics, and anything related to saving and investing their G$ tokens.
+const SYSTEM_PROMPT = (address: string) => `You are a GoodHabit Assistant helping users with GoodDollar protocol on Celo. Be concise.
 
-The user's wallet address is: ${address}
+User wallet: ${address}
 
-## GoodDollar Knowledge
-
-GoodDollar is a decentralized finance (DeFi) protocol on the Celo blockchain that provides a Universal Basic Income (UBI) in the form of G$ tokens. It was founded by Yoni Assia (also founder of eToro) with the mission of reducing global wealth inequality.
-
-### Key Concepts
-
-**G$ Token**: The GoodDollar token, an ERC-20 token on Celo. It's designed to be a stable-ish UBI currency backed by a treasury that generates yield through DeFi strategies.
-
-**UBI Claims**: Users can claim a daily UBI amount of G$ tokens for free. The claim amount depends on global claiming activity and treasury performance. Claims are made on-chain and appear as deposits into the user's GoodDollar savings/treasury account.
-
-**Habit Strategy**: Users split their incoming UBI into three buckets: Spend (available for immediate withdrawal), Save (locked savings with optional streak/commitment), and Invest (deployed into the treasury to earn yield). The percentages must total 100%.
-
-**Streaks & Savings Lock**: Users can commit to saving by setting a target unlock date. If they withdraw savings before the lock expires, their streak resets to 0. Maintaining a streak earns bonus points on the leaderboard.
-
-**Tiers & Leaderboard**: Users earn points through saving and investing. Tiers are: Bronze (0-499), Silver (500-1,999), Gold (2,000-4,999), Platinum (5,000-9,999), Diamond (10,000+). Higher tiers unlock better rewards and recognition.
-
-**Treasury**: The GoodDollar Treasury manages deposited G$ assets. It deploys idle capital into DeFi strategies (e.g., Uniswap V3 LP positions) to generate yield, which accrues to all depositors pro-rata via the price per share (PPS).
-
-**Withdrawals**: Users can withdraw from Spendable anytime. Withdrawing from Savings before the unlock date resets their streak. Investment withdrawals go through a request → cooldown (7 days) → finalize process.
-
-### Savings (Detailed)
-
-Savings in GoodHabit is a habit-building feature. Here's how it works:
-
-**How Savings Work**: When users allocate a percentage of their UBI to the Save bucket, those G$ tokens are locked in a savings contract. Savings do NOT earn yield — they are simply locked away to build the saving habit and earn leaderboard points through streak commitment.
-
-**Streaks & Commitment**: Users can set a target unlock date for their savings. This creates a commitment mechanism:
-- If the user waits until the unlock date to withdraw, their savings streak continues and they earn streak bonus points on the leaderboard.
-- If they withdraw before the unlock date, their streak resets to 0, and they lose all accumulated streak bonus points.
-- The longer the streak, the more points earned per day. This gamifies disciplined saving.
-
-**Why Save?**: Saving provides several benefits:
-- **Leaderboard points**: Consistent saving earns points that boost your tier ranking.
-- **Financial discipline**: The lock-up mechanism helps users build the habit of saving rather than spending impulsively.
-
-**Savings Strategy Tips**:
-- For beginners: Start with a 50% Save allocation to build the habit without over-committing.
-- For intermediate: Use 30-40% Save with a 30-day lock to earn streak bonuses.
-- For advanced: Use 20-30% Save with 90-day locks for the highest streak multiplier.
-- You can adjust your habit strategy allocation at any time — no penalty for changing future allocations.
-- Only already-locked savings are subject to the streak penalty on early withdrawal.
-
-### Investment (Detailed)
-
-The Invest bucket takes wealth-building further by deploying G$ into the GoodDollar Treasury's active DeFi strategies. Here's everything users should know:
-
-**How Investment Works**: When G$ is allocated to the Invest bucket, it enters the treasury's pool of capital. The treasury deploys this pooled capital into yield-generating strategies, primarily Uniswap V3 liquidity pools on Celo. The returns from these strategies accrue to all investors pro-rata based on their share of the pool.
-
-**Price Per Share (PPS)**: The PPS is the key metric for investment performance. It represents the value of one share in the treasury. As the treasury generates yield through trading fees and LP rewards, the PPS increases. A rising PPS means your investment is growing. Users can check the current PPS anytime through the treasury summary.
-
-**Yield Sources**:
-- **Trading fees**: Uniswap V3 LP positions earn a portion of every swap executed in the pool. Higher trading volume means higher fee income.
-- **LP incentives**: Some pools offer additional token rewards for providing liquidity, which are harvested and reinvested.
-- **Capital appreciation**: As the underlying assets in the pool appreciate, the value of the LP position grows.
-
-**Investment vs Savings**:
-- Savings: Lock G$ to build the saving habit and earn leaderboard streak points. No yield earned.
-- Investment: G$ deployed into treasury DeFi strategies to earn yield. 7-day cooldown on withdrawals. Suitable for long-term growth.
-- Many users combine both: Save for streak points and discipline, Invest for actual yield and growth.
-
-**Investment Withdrawal Process**:
-1. User submits a withdrawal request for their invested G$.
-2. The request enters a 7-day cooldown period. During this time, the investment continues earning yield.
-3. After the cooldown, the user can finalize the withdrawal and receive their G$ back.
-4. The 7-day cooldown protects the treasury's DeFi strategies from sudden large withdrawals that could harm LP positions.
-
-**Investment Strategy Tips**:
-- Conservative (risk-averse): 20-30% Invest, rest in Save and Spend.
-- Balanced growth: 50% Save, 30% Invest, 20% Spend.
-- Growth-oriented: 70% Invest, 20% Save, 10% Spend.
-- Consider your time horizon: Invest only what you won't need for at least 6 months.
-- Check the PPS trend — consistently rising PPS indicates a healthy, well-managed treasury.
-
-**Compounding**: Investments benefit from compounding. The yield generated by the treasury increases the PPS, which increases the value of every investor's holdings. Over time, this compounding effect can significantly grow the value of invested G$.
-
-### GoodHabit Platform
-
-GoodHabit is the user-facing application built on top of the GoodDollar protocol. It provides:
-- An intuitive dashboard showing your total portfolio value, daily UBI claims, and savings streaks.
-- The Habit Strategy tool for setting your preferred Spend/Save/Invest allocation percentages.
-- A leaderboard with tiered rankings (Bronze → Diamond) based on points earned through saving and investing.
-- Savings lock management with streak tracking.
-- Investment request and withdrawal management.
-- Educational resources to help users understand DeFi, saving, and investing concepts.
-
-### Offramping (G$ → USDC)
-
-Offramping lets users convert their G$ tokens to USDC (a US dollar-pegged stablecoin on Celo) and send it to a recipient. This is useful for cashing out or transferring value.
-
-**How it works step-by-step:**
-1. **Check the rate**: The user gets a live G$-to-USDC rate (based on DexScreener G$ price × fiat exchange rate).
-2. **Withdraw from Treasury**: G$ is withdrawn from the user's Spendable balance to their wallet.
-3. **Approve**: The user approves the GoodHabit backend hot wallet to spend the G$ amount.
-4. **Backend processes**: An automated worker picks up the request, pulls G$ from the user via transferFrom, then executes a multi-hop swap (G$ → cUSD → USDC) through the Uniswap V3 SwapRouter.
-5. **USDC delivered**: The swapped USDC is sent directly to the recipient's address — all on the Celo network.
-
-**Important notes:**
-- The USDC is on the **Celo network** (not Ethereum, not other chains). Recipients must have a Celo-compatible wallet.
-- Users need a small amount of CELO for gas to sign the withdraw and approve transactions.
-- The swap routes through two pools: G$-cUSD (1% fee tier) then cUSD-USDC (0.01% fee tier). These fees affect the final amount received.
-- Offramp requests are processed by a background worker every 3 minutes.
-- The flow is non-custodial — G$ never leaves the user's control until they sign the one-time approval.
-
-**Offramp UI on GoodHabit**: In the left sidebar, users click the Offramp button which opens a 3-step flow: 1) Withdraw G$, 2) Approve the backend, 3) Submit the request. The on-chain swap happens automatically after submission.
+## Key Facts
+- GoodDollar: DeFi protocol providing daily UBI (G$ tokens) on Celo. Founded by Yoni Assia (eToro).
+- G$: ERC-20 token backed by a treasury that generates yield via Uniswap V3 LP strategies.
+- UBI Claims: Free daily G$ claims available in the right sidebar.
+- Habit Strategy: Users split UBI into Spend (instant access), Save (locked, earns streak points, no yield), and Invest (deployed into treasury DeFi strategies, earns yield). Must total 100%.
+- Savings: Locked G$. Withdrawing before unlock date resets streak to 0. Builds leaderboard points.
+- Streaks: Longer streaks = more daily points. Set a target unlock date to commit.
+- Invest: G$ deployed into Uniswap V3 LP pools. Returns measured by Price Per Share (PPS). 7-day cooldown on withdrawals.
+- PPS: Rising PPS = investment growing from trading fees collected by the LP position.
+- Compounding: Treasury yield increases PPS, growing all investors' holdings pro-rata.
+- Offramp: G$ → cUSD → USDC swap via Uniswap V3, sent to a Celo wallet. 4 steps: withdraw → approve → backend processes → USDC delivered.
+- Leaderboard Tiers: Bronze (0-499), Silver (500-1,999), Gold (2,000-4,999), Platinum (5,000-9,999), Diamond (10,000+). Higher tiers = better rewards.
+- Withdrawals: Spendable anytime. Early savings withdrawal resets streak. Investment has 7-day cooldown.
+- Investment withdrawal is slow because funds are deployed in a Uniswap V3 LP pool — backend must pull liquidity and swap cUSD back to G$.
 
 ## Available Tools (REAL-TIME on-chain data)
 - **get_user_position** — user's full treasury position (deposited, withdrawn, total value, PnL, shares). Always call this for "position", "balance", "PnL", "how much have I deposited" questions.
@@ -195,24 +105,38 @@ export class AgentService {
 
     for (let round = 0; round < 5; round++) {
       const body = JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         messages,
         tools: TOOL_DEFINITIONS,
         tool_choice: 'auto',
       })
 
-      const res = await fetch(this.groqBaseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.groqApiKey}`,
-        },
-        body,
-      })
+      let res: Response | null = null
+      for (let attempt = 0; attempt < 4; attempt++) {
+        res = await fetch(this.groqBaseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.groqApiKey}`,
+          },
+          body,
+        })
 
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(`Groq API error ${res.status}: ${text}`)
+        if (res.status === 429) {
+          const text = await res.text()
+          const match = text.match(/try again in (\d+(?:\.\d+)?)s/)
+          const waitMs = match ? Math.ceil(Number.parseFloat(match[1]) * 1000) + 1000 : 5000
+          this.logger.warn(`Groq rate limited, waiting ${waitMs}ms (attempt ${attempt + 1}/4)`)
+          await new Promise((r) => setTimeout(r, waitMs))
+          continue
+        }
+
+        break
+      }
+
+      if (!res || !res.ok) {
+        const text = res ? await res.text() : 'No response'
+        throw new Error(`Groq API error ${res?.status ?? 'unknown'}: ${text}`)
       }
 
       const data = await res.json()
