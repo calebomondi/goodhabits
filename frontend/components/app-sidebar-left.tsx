@@ -39,7 +39,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
 import { TREASURY_ABI, getTreasuryAddress } from "@/lib/contract"
-import { useHasUserSetStrategy, useGetUserHabit, useSetHabitStrategy, useTargetSavingsUnlock, useBrokeHabits, useSetTargetSavingsUnlock, useGetUserAllocation, useWithdraw, TOKENS, ERC20_ABI, useGetUserPosition, useGetSummary, useGetWithdrawalRequests, useRequestWithdrawal, useFinalizeWithdrawal, useCancelWithdrawal } from "@/lib/hooks"
+import { useHasUserSetStrategy, useGetUserHabit, useSetHabitStrategy, useTargetSavingsUnlock, useBrokeHabits, useSetTargetSavingsUnlock, useGetUserAllocation, useWithdraw, TOKENS, ERC20_ABI, useGetUserPosition, useGetSummary, useGetWithdrawalRequests, useRequestWithdrawal, useFinalizeWithdrawal, useCancelWithdrawal, useGetInvestmentRequests, useRequestInvestmentWithdrawal } from "@/lib/hooks"
 
 // Types moved to hooks.ts: UserPosition, Summary, WithdrawalRequest
 
@@ -268,12 +268,12 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
       setWithdrawAmount("")
       setOfframpFiatAmount("")
 
-      invalidateAfterTx()
+      invalidateAfterTx(withdrawHash)
     }
-  }, [isConfirmed, withdrawAction, address, queryClient])
+  }, [isConfirmed, withdrawAction, withdrawHash, address, queryClient])
 
-  function invalidateAfterTx() {
-    fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
+  function invalidateAfterTx(txHash?: `0x${string}`) {
+    fetch(`/api/analytics/refresh?user=${address}${txHash ? `&txHash=${txHash}` : ''}`, { method: "POST" })
       .catch(() => {})
       .then(() => {
         refetchAllocation()
@@ -286,8 +286,8 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
         queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
         queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
         queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-        queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-        queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
+        queryClient.refetchQueries({ queryKey: ["user-txns", address] })
+        queryClient.refetchQueries({ queryKey: ["analytics", "volume"] })
         queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
         queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
         queryClient.invalidateQueries({ queryKey: ["treasury", "requests", address] })
@@ -300,23 +300,23 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
     if (requestConfirmed) {
       setRequestAmount("")
       toast.success("Withdrawal request submitted on-chain!")
-      invalidateAfterTx()
+      invalidateAfterTx(requestHash)
     }
-  }, [requestConfirmed])
+  }, [requestConfirmed, requestHash])
 
   React.useEffect(() => {
     if (finalizeConfirmed) {
       toast.success("Withdrawal finalized on-chain!")
-      invalidateAfterTx()
+      invalidateAfterTx(finalizeHash)
     }
-  }, [finalizeConfirmed])
+  }, [finalizeConfirmed, finalizeHash])
 
   React.useEffect(() => {
     if (cancelConfirmed) {
       toast.success("Withdrawal request cancelled on-chain!")
-      invalidateAfterTx()
+      invalidateAfterTx(cancelHash)
     }
-  }, [cancelConfirmed])
+  }, [cancelConfirmed, cancelHash])
 
   React.useEffect(() => {
     if (lockConfirmed) {
@@ -398,7 +398,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
   // Offramp chain: step 2 — withdraw confirmed → fetch beneficiary → trigger approve
   React.useEffect(() => {
     if (isConfirmed && offrampStep === 'withdraw' && withdrawAction === 'offramp') {
-      invalidateAfterTx()
+      invalidateAfterTx(withdrawHash)
       fetch('/api/offramp/beneficiary')
         .then(r => r.json())
         .then(data => {
@@ -410,7 +410,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
           setOfframpStep('idle')
         })
     }
-  }, [isConfirmed, offrampStep, withdrawAction])
+  }, [isConfirmed, offrampStep, withdrawAction, withdrawHash])
 
   // Offramp chain: step 3 — backendAddress set → send approve tx
   React.useEffect(() => {
@@ -788,7 +788,7 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
                           : "text-muted-foreground hover:text-foreground"
                       } cursor-pointer`}
                     >
-                      Offramp to fiat
+                      Offramp
                     </button>
                   </div>
 
@@ -983,12 +983,144 @@ export function AppSidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar
             <Separator className="my-1 group-data-[collapsible=icon]:hidden" />
 
             {/* ════════════════════════════════════════
-               SECTION 4: INVESTMENT
+               SECTION 4: INVESTMENT (PLACEHOLDER)
             ════════════════════════════════════════ */}
+            <div className="group-data-[collapsible=icon]:hidden rounded-lg bg-muted/30 p-4">
+              <Collapsible open={openSection === "investment"} onOpenChange={(o) => setOpenSection(o ? "investment" : null)}>
+                <CollapsibleTrigger className="group/collapsible flex w-full cursor-pointer items-center gap-1.5">
+                  <TrendingUp className="size-4 text-emerald-500" />
+                  <span className="text-sm font-heading font-medium text-foreground">Investment</span>
+                  <ChevronDown className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="flex flex-col gap-3 pt-2.5">
 
+                  {/* PLACEHOLDER: Summary card showing allocated invest amount and virtual growth */}
+                  {/* In the future this will reflect actual on-chain LP position performance */}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-emerald-800">Investment Portfolio</span>
+                      <Badge variant="outline" className="text-[11px] bg-emerald-100 text-emerald-700 border-emerald-300">
+                        0.00  go% APY*
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <span className="text-muted-foreground">Allocated</span>
+                      <span className="text-right font-medium tabular-nums">
+                        {allocation ? formatG$(allocation.investAmount.toString()) : '—'} G$
+                      </span>
+                      <span className="text-muted-foreground">Shares</span>
+                      <span className="text-right font-medium tabular-nums">
+                        {(unlockedShares + lockedSharesAmt).toFixed(4)}
+                      </span>
+                      <span className="text-muted-foreground">Share Price</span>
+                      <span className="text-right font-medium tabular-nums">{ppsNum.toFixed(4)} G$</span>
+                      <span className="text-muted-foreground">Est. Value</span>
+                      <span className="text-right font-medium tabular-nums">{totalValueG$.toFixed(2)} G$</span>
+                    </div>
+                  </div>
+
+                  {/* PLACEHOLDER: Investment withdrawal request form */}
+                  {/* In the future this will trigger on-chain requestWithdrawal() on the treasury */}
+                  <InvestmentWithdrawForm allocation={allocation} />
+
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
 
           </div>
       </SidebarContent>
     </Sidebar>
+  )
+}
+
+// PLACEHOLDER: Investment withdrawal request sub-component
+// In the future this will trigger on-chain requestWithdrawal() via treasury contract.
+// For now it simply enqueues a request in the backend DB.
+function InvestmentWithdrawForm({ allocation }: { allocation: { investAmount: bigint } | null }) {
+  const maxInvest = allocation ? Number(allocation.investAmount) / 1e18 : 0
+  const [amount, setAmount] = React.useState("")
+  const { mutate: submitRequest, isPending: isSubmitting, isSuccess: submitSuccess } = useRequestInvestmentWithdrawal()
+  const { data: requests = [], isLoading: loadingReqs } = useGetInvestmentRequests()
+
+  const handleSubmit = () => {
+    const num = Number.parseFloat(amount)
+    if (!num || num <= 0) return
+    submitRequest(amount, {
+      onSuccess: () => {
+        setAmount("")
+        toast.success("Withdrawal request submitted")
+      },
+      onError: (e) => {
+        toast.error(e.message)
+      },
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="text-[11px] text-muted-foreground mb-1 block">Amount to withdraw (G$)</label>
+          <div className="relative">
+            <Input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              type="number"
+              className="h-9 text-sm pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setAmount(maxInvest > 0 ? maxInvest.toString() : "0")}
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-[11px] font-medium text-emerald-600 hover:text-emerald-700 px-1.5 py-0.5 rounded"
+            >
+              Max
+            </button>
+          </div>
+        </div>
+        <Button
+          size="xs"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white h-9"
+          onClick={handleSubmit}
+          disabled={isSubmitting || !amount || Number.parseFloat(amount) <= 0}
+        >
+          {isSubmitting ? (
+            <><LoaderCircle className="size-3.5 animate-spin mr-1" /> Submitting...</>
+          ) : (
+            "Request Withdrawal"
+          )}
+        </Button>
+      </div>
+
+      {submitSuccess && (
+        <p className="text-xs text-emerald-600">Request submitted! It will be processed shortly.</p>
+      )}
+
+      {/* Pending withdrawal requests */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[11px] font-medium text-muted-foreground">Pending requests</span>
+        {loadingReqs ? (
+          <span className="text-xs text-muted-foreground">Loading...</span>
+        ) : requests.length === 0 ? (
+          <span className="text-xs text-muted-foreground italic">No pending requests</span>
+        ) : (
+          requests.slice(0, 5).map((r: { id: number; amountG: string; status: string; createdAt: string }) => (
+            <div key={r.id} className="flex items-center justify-between text-xs">
+              <span className="font-medium tabular-nums">{Number(r.amountG).toFixed(2)} G$</span>
+              <span className={`flex items-center gap-1 ${
+                r.status === 'completed' ? 'text-emerald-600' : 'text-amber-600'
+              }`}>
+                {r.status === 'completed' ? (
+                  <CheckCircle2 className="size-3" />
+                ) : (
+                  <Clock className="size-3" />
+                )}
+                {r.status}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   )
 }
