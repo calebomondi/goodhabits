@@ -1,5 +1,5 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
-import { useQuery } from "@tanstack/react-query"
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
+import { useQuery, useMutation } from "@tanstack/react-query"
 import { formatUnits, parseUnits } from "viem"
 import { TREASURY_ABI, getTreasuryAddress } from "./contract"
 import { toast } from "sonner";
@@ -438,4 +438,40 @@ export function useCancelWithdrawal(chainId?: number) {
     })
   }
   return { cancelWithdrawal, hash, isPending, isError, writeError: error, isConfirming, isConfirmed } as const
+}
+
+// PLACEHOLDER: Investment hooks
+// These interact with the backend DB-backed withdrawal request queue.
+// In the future they will trigger on-chain requestWithdrawal().
+
+export function useRequestInvestmentWithdrawal() {
+  const { address } = useAccount()
+
+  return useMutation({
+    mutationFn: async (amountG: string) => {
+      const res = await fetch('/api/investment/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userAddress: address, amountG }),
+      })
+      if (!res.ok) throw new Error('Failed to create investment withdrawal request')
+      return res.json()
+    },
+  })
+}
+
+export function useGetInvestmentRequests() {
+  const { address } = useAccount()
+
+  return useQuery({
+    queryKey: ['investment-requests', address],
+    queryFn: async () => {
+      if (!address) return []
+      const res = await fetch(`/api/investment/requests?user=${address}`)
+      if (!res.ok) throw new Error('Failed to fetch investment requests')
+      return res.json()
+    },
+    enabled: !!address,
+    refetchInterval: 30_000,
+  })
 }
