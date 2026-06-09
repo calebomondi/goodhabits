@@ -371,19 +371,22 @@ export function AppSidebarRight({ ...props }: React.ComponentProps<typeof Sideba
   React.useEffect(() => {
     if (depositConfirmed) {
       setDepositAmount("")
-      refetchBalance()
-      queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
-      queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
-
-      queryClient.invalidateQueries({ queryKey: ["user-txns", address] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "volume"] })
-      queryClient.invalidateQueries({ queryKey: ["analytics", "leaderboard"] })
-      queryClient.invalidateQueries({ queryKey: ["leaderboard", "status", address] })
 
       fetch(`/api/analytics/refresh?user=${address}`, { method: "POST" })
         .finally(() => {
-          queryClient.invalidateQueries({ queryKey: ["user-alloc", address] })
+          refetchBalance()
+          queryClient.invalidateQueries({
+            predicate: (q) => {
+              const k = q.queryKey[0] as Record<string, unknown>
+              return k?.entity === 'readContract' && k?.functionName === 'balanceOf' && k?.address === TOKENS.G$
+            },
+          })
+          queryClient.invalidateQueries({
+            predicate: (q) => {
+              const k = q.queryKey[0] as Record<string, unknown>
+              return k?.entity === 'readContract' && k?.functionName === 'getUserAllocation'
+            },
+          })
           queryClient.invalidateQueries({ queryKey: ["treasury", "users", address] })
           queryClient.invalidateQueries({ queryKey: ["analytics", "summary"] })
           queryClient.invalidateQueries({ queryKey: ["user-txns", address] })

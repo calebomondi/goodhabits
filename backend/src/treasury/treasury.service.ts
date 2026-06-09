@@ -271,6 +271,32 @@ export class TreasuryService {
     });
   }
 
+  async getUserHabit(user: Address) {
+    return this.client.readContract({
+      address: this.contractAddress,
+      abi: TREASURY_ABI,
+      functionName: 'getUserHabit',
+      args: [user],
+    });
+  }
+
+  async getG$Balance(user: Address): Promise<bigint> {
+    return this.client.readContract({
+      address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A',
+      abi: [
+        {
+          type: 'function',
+          name: 'balanceOf',
+          inputs: [{ type: 'address', name: 'account' }],
+          outputs: [{ type: 'uint256' }],
+          stateMutability: 'view',
+        },
+      ],
+      functionName: 'balanceOf',
+      args: [user],
+    });
+  }
+
   async getActivePositionIds(): Promise<bigint[]> {
     return this.client.readContract({
       address: this.contractAddress,
