@@ -226,7 +226,11 @@ export class SnapshotService {
     }
   }
 
-  async refreshUser(user: `0x${string}`): Promise<void> {
+  async refreshUser(user: `0x${string}`, txHash?: `0x${string}`): Promise<void> {
+    if (txHash) {
+      await this.volumeIndexer.indexUserEventByTxHash(user, txHash)
+    }
+
     const blockNumber = await this.client.getBlockNumber()
     await this.volumeIndexer.indexUserEvents(user, blockNumber)
     await this.volumeIndexer.indexEvents(blockNumber)
